@@ -75,7 +75,7 @@ Once i will polish my version, or better to say - write one from scratch, i will
 
 ## toy example
 
-- presented config.toml is not designed for code cov ( lot of object generated, bit queue allowed, lot calls per object allowed )
+- presented config.toml is not designed for code cov ( lot of object generated, big queue allowed, lot calls per object allowed )
 - "fuzzing" is restricted just for testing - templates (sock_addr.rs, socket.rs) just few flags allowed 
 - object logic (fuzzer/src/states/socket/state.rs) nicely demonstrates some edge cases : 
   - linux kernel is fd based, and dup is essential part, in order to properly record for poc we need special logic ( basically it applies for any target with cored dup functionality ) : SocketState->dup function
