@@ -15,13 +15,13 @@ In fact it is PITA to build fuzzing logic as some declaration needed, no interna
 Once i will polish my version, or better to say - write one from scratch, i will put it here too, but i dont promise that will be anytime soon..
 
 ## why
-- i am putting it on github as tribute i should pay towards open source and other open sourced research i learned from, but it is not intended to be fully fledged fuzzer clone + use; rather you can tinker it with it if you want and contribution to its developement overtime will be appreciated. I do plan to maintain it.
+- i am putting it on github as tribute i should pay towards open source and other open sourced research i learned from, but it is not intended to be fully fledged fuzzer clone + use ( except toy branch ); rather you can tinker with it if you want and contribution to its developement overtime will be appreciated. I do plan to maintain it.
 
 
 - name ~ once you eat 20+ bananas a day, except other goodies, you will think everythink is banana
 
 
-- re:syzkaller ~ this work does not aim to be better or replace syzkaller, it simple adds another angle :
+- re:syzkaller ~ this work does not aim to be better, replace syzkaller nor compete, it simple adds another angle :
     + black box, little or no code cov feedback
     + researcher knowledge as main feedback
     + race conditions as main priority ( every object fuzzer has its own thread )
@@ -75,7 +75,7 @@ Once i will polish my version, or better to say - write one from scratch, i will
 
 ## toy example
 
-- presented config.toml is not designed for code cov ( lot of object generated, bit queue allowed, lot calls per object allowed )
+- presented config.toml is not designed for code cov ( lot of object generated, big queue allowed, lot calls per object allowed )
 - "fuzzing" is restricted just for testing - templates (sock_addr.rs, socket.rs) just few flags allowed 
 - object logic (fuzzer/src/states/socket/state.rs) nicely demonstrates some edge cases : 
   - linux kernel is fd based, and dup is essential part, in order to properly record for poc we need special logic ( basically it applies for any target with cored dup functionality ) : SocketState->dup function
