@@ -1,0 +1,16 @@
+[package]
+name = "raceunlocker"
+version = "0.1.0"
+authors = ["re:Zer0dAI <tutti@frutti.com>"]
+
+[lib]
+name = "libraceunlocker"
+path = "src/lib.rs"
+doc = false
+
+[dependencies]
+core = { path = "../../core" }
+common = { path = "../common" }
+serde = "1.0.131"
+serde_derive = "1.0.131"
+rand = "0.8.4"

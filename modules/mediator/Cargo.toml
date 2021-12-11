@@ -1,0 +1,16 @@
+[package]
+name = "mediator"
+version = "0.1.0"
+authors = ["re:Zer0dAI <tutti@frutti.com>"]
+
+[lib]
+name = "libmediator"
+path = "src/lib.rs"
+doc = false
+
+[dependencies]
+rand = "0.8.4"
+serde = "1.0.131"
+serde_derive = "1.0.131"
+core = { path = "../../core" }
+common = { path = "../common" }

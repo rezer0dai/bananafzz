@@ -1,0 +1,19 @@
+[package]
+name = "plugs"
+version = "0.1.0"
+authors = ["re:Zer0dAI <tutti@frutti.com>"]
+
+[dependencies]
+toml = "0.5.8"
+serde = "1.0.131"
+serde_derive = "1.0.131"
+rand = "0.8.4"
+core = { path = "../../core" }
+common = { path = "../common" }
+generic = { path = "../../generic" }
+filter = { path = "../filter" }
+raceunlocker = { path = "../raceunlocker" }
+sleeper = { path = "../sleeper" }
+limiter = { path = "../limiter" }
+debug = { path = "../debug" }
+mediator = { path = "../mediator" }
