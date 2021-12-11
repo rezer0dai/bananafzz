@@ -1,0 +1,39 @@
+online = ["libraceunlock", "liblimiter", "libpoclog", "libdebug"]#"libfilter"]
+
+[core.debug]
+noisy = true#false#
+ctors_included = true#false#
+mask = 65535#
+only_successfull = true#false
+
+[core.poclog]
+addr = 8589934592
+size = 104857600
+flush2file = true
+fname = "bpoc"
+printout = false#true
+
+[core.raceunlock]
+sleep = 33
+racer_count = 6
+
+[core.overpoc]
+size_of_log = 200
+
+[core.limiter]
+num_of_calls = 8888
+
+[core.grayfuzz]
+path = "./"
+extension = ""
+cc_module = ["libcorpus"]
+lib_count = 15
+entry_point = "do_poc"
+oscilate_count = 6
+after_fuzz_count = 10
+racer_count = 3
+wait_ms = 100
+skip_ctors = true
+
+[core.filter.whitelist]
+ctors = 0

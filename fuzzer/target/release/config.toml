@@ -1,0 +1,15 @@
+version = "banana fuzzer by socket toy example"
+noisy = true
+dead_call = 30
+state_update_freq = 2
+max_racers_count = 4
+max_queue_size = 100
+singlethread = false
+active_seconds = 3
+push_sleep = 222
+new_limit = 20
+dup_limit = 10
+ratio = 3
+after_creation_sleep = 100
+push_count = 33
+rnd_data_to_pattern = false

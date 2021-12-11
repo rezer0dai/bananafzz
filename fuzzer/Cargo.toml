@@ -1,0 +1,22 @@
+[package]
+name = "banana-fuzzer"
+version = "0.1.0"
+authors = ["re:Zer0dAI <eatfigs@notpigs.com>"]
+
+[lib]
+name = "fuzzy"
+path = "src/lib.rs"
+doc = false
+crate_type = ["cdylib"] 
+
+[dependencies]
+rand = "0.8.4"
+libc = "0.2.109"
+toml = "0.5.8"
+serde = "1.0.131"
+serde_derive = "1.0.131"
+lazy_static = "1.4.0"
+generic = { path = "../generic" }
+core = { path = "../core" }
+api = { path = "../api" }
+plugs = { path = "../modules/plugs" }
