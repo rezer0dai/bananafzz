@@ -1,10 +1,10 @@
 [package]
-name = "filter"
+name = "bfl"
 version = "0.1.0"
 authors = ["re:Zer0dAI <tutti@frutti.com>"]
 
 [lib]
-name = "libfilter"
+name = "libbfl"
 path = "src/lib.rs"
 doc = false
 
@@ -13,3 +13,4 @@ core = { path = "../../core" }
 generic = { path = "../../generic" }
 serde = "1.0.131"
 serde_derive = "1.0.131"
+libc = "0.2.109"

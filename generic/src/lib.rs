@@ -201,7 +201,8 @@ pub fn c_alloc(addr: usize, size: usize) -> usize {
             std::mem::transmute(addr),
             size,
             libc::PROT_READ | libc::PROT_WRITE,
-            libc::MAP_SHARED | libc::MAP_POPULATE | libc::MAP_FIXED | libc::MAP_ANONYMOUS,
+            libc::MAP_SHARED | libc::MAP_FIXED | libc::MAP_ANONYMOUS,
+//            libc::MAP_SHARED | libc::MAP_POPULATE | libc::MAP_FIXED | libc::MAP_ANONYMOUS,
             -1, 0)
     };
     if 0 == mem as u64 {

@@ -1,4 +1,4 @@
-#![feature(unboxed_closures, asm)]
+#![feature(unboxed_closures)]
 extern crate rand;
 extern crate byteorder;
 extern crate core;

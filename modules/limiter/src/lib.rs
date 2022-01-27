@@ -26,7 +26,7 @@ struct Limiter {
 }
 
 impl ICallObserver for Limiter {
-    fn notify(&self, _: &StateInfo, call: &Call) -> bool {
+    fn notify(&self, _: &StateInfo, call: &mut Call) -> bool {
         // if 0 == state.sucess {//we dont care about ctors - ouuuch we care in mini pocs ...
         //     return true
         // }

@@ -3,6 +3,8 @@ use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 use self::core::generator::serialize::SerializationInfo;
 
+use super::bfl_leaf::Bfl;
+
 extern crate generic;
 
 pub struct DeRef {
@@ -11,23 +13,23 @@ pub struct DeRef {
 }
 
 impl DeRef {
-    pub fn new(size: usize) -> DeRef {
-        DeRef {
+    pub fn new(size: usize) -> Bfl::<DeRef> {
+        Bfl::new(DeRef {
             size : size,
             offset : 0
-        }
+        })
     }
-    pub fn partial(offset: usize, size: usize) -> DeRef {
-        DeRef {
+    pub fn partial(offset: usize, size: usize) -> Bfl::<DeRef> {
+        Bfl::new(DeRef {
             size : size,
             offset : offset,
-        }
+        })
     }
 }
 
 /// Backbone of whole state fuzzing
 impl ISerializableArg for DeRef {
-    fn serialize(&self, _: &[u8], fd: &[u8]) -> Vec<SerializationInfo> {
+    fn serialize(&self, _: &[u8], fd: &[u8], _: &[u8]) -> Vec<SerializationInfo> {
         vec![
             SerializationInfo {
                 offset : 0,
@@ -44,7 +46,7 @@ impl IArgLeaf for DeRef {
 
     fn name(&self) -> &'static str { "Fd" }
 
-    fn generate_unsafe(&mut self, mem: &mut[u8], fd: &[u8]) {
-      mem.copy_from_slice(&fd);
+    fn generate_unsafe(&mut self, mem: &mut[u8], fd: &[u8], _: &[u8]) {
+      mem.copy_from_slice(&fd[self.offset..self.offset+self.size]);
     }
 }

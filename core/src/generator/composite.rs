@@ -1,4 +1,6 @@
 use std::ops::Range;
+use std::collections::HashMap;
+
 use super::leaf::IArgLeaf;
 use super::serialize::ISerializableArg;
 use super::serialize::SerializationInfo;
@@ -95,7 +97,7 @@ impl IArgLeaf for ArgComposite {
     fn name(&self) -> &'static str { self.name }
 
     //better if this will be private ( different trait dont used in queue )
-    fn generate_unsafe(&mut self, mem: &mut[u8], fd: &[u8]) {
+    fn generate_unsafe(&mut self, mem: &mut[u8], fd: &[u8], shared: &[u8]) {
         // for &(off, ref mut arg) in self.args.iter() {
         //     let size = arg.size();
         //     arg.generate(&mut mem[off..off+size])
@@ -105,7 +107,14 @@ impl IArgLeaf for ArgComposite {
         for i in 0..self.args.len() {
             let (off, ref mut arg) = self.args[i];
             let size = arg.size();
-            arg.generate(&mut mem[off..off+size], fd)
+            arg.generate(&mut mem[off..off+size], fd, shared)
+        }
+    }
+    fn save_shared(&mut self, mem: &[u8], shared: &mut[u8]) { 
+        for i in 0..self.args.len() {
+            let (off, ref mut arg) = self.args[i];
+            let size = arg.size();
+            arg.save_shared(&mem[off..off+size], shared)
         }
     }
 }
@@ -130,11 +139,11 @@ impl ISerializableArg for ArgComposite {
     ///         }]
     /// }
     /// ```
-    fn serialize(&self, mem: &[u8], fd: &[u8]) -> Vec<SerializationInfo> {
+    fn serialize(&self, mem: &[u8], fd: &[u8], shared: &[u8]) -> Vec<SerializationInfo> {
         self.args
             .iter()
             .map(|&(off, ref arg)|
-                 arg.serialize(&mem[off..off+arg.size()], fd)
+                 arg.serialize(&mem[off..off+arg.size()], fd, shared)
                     .into_iter()
                     .map(move |mut info| {
                         info.offset += off;
@@ -155,6 +164,36 @@ impl ISerializableArg for ArgComposite {
         }
         infos
         */
+    }
+
+    fn dump(&self, mem: &[u8]) -> Vec<u8> {
+        self.args
+            .iter()
+            .map(|&(off, ref arg)| {
+                let data = arg.dump(&mem[off..off+arg.size()]);
+                    
+                let mut sz_data = unsafe { 
+                    generic::any_as_u8_slice(&data.len()).to_vec() };
+                assert!(sz_data.len() == std::mem::size_of::<usize>());
+                sz_data.extend(&data);
+
+                sz_data
+            })
+            .flat_map(move |data| data)
+            .collect::< Vec<u8> >()
+    }
+    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
+        let size_size = std::mem::size_of::<usize>();
+        let mut off_d = 0;
+        for &mut (off, ref mut arg) in self.args.iter_mut() {
+            let asize = arg.size();
+
+            let size = arg.load(&mut mem[off..][..asize], 
+                &dump[size_size + off_d..], &data[off..][..asize], fd_lookup);
+
+            off_d += size_size + size;
+        }
+        off_d
     }
 }
 

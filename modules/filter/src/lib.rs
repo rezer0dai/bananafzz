@@ -20,7 +20,7 @@ struct Filter {
 }
 
 impl ICallObserver for Filter {
-    fn notify(&self, _: &StateInfo, call: &Call) -> bool {
+    fn notify(&self, _: &StateInfo, call: &mut Call) -> bool {
         if self.whiteset.contains(&call.id()) {
           //println!("passtrough! : {:?} -> {}", call.id(), call.name());
         }

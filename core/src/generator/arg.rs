@@ -1,4 +1,6 @@
 use std::mem;
+use std::collections::HashMap;
+
 use super::leaf::IArgLeaf;
 
 use generic::native_alloc::NativeAlloc;
@@ -83,8 +85,8 @@ impl Arg {
     ///     - that is essential to connecting various calls
     ///     - file descriptor is example, index or returned unique identifier are the same issue
     ///     - pointers inside structure -> we need alloc new memory in poc, ..
-    pub fn do_serialize(&self, fd: &[u8]) -> String {
-        match self.generator.serialize(self.data.data(), fd)
+    pub fn do_serialize(&self, fd: &[u8], shared: &[u8]) -> String {
+        match self.generator.serialize(self.data.data(), fd, shared)
             .iter()
             .fold(
                 (String::from(""), String::from("")),
@@ -104,9 +106,18 @@ impl Arg {
     ///
     /// - for primitive type it will do just one generation
     /// - for complex types ( memory arguments mainly ) will generate trough composite which will walk trough its leafs
-    pub fn do_generate(&mut self, fd: &[u8]) -> &mut Self {
-        self.generator.generate(self.data.data_mut(), fd);
+    pub fn do_generate(&mut self, fd: &[u8], shared: &[u8]) -> &mut Self {
+        self.generator.generate(self.data.data_mut(), fd, shared);
         self
+    }
+    pub fn do_save_shared(&mut self, shared: &mut[u8]) {
+        self.generator.save_shared(self.data.data(), shared);
+    }
+    pub fn dump(&self) -> Vec<u8> {
+        self.generator.dump(self.data.data())
+    }
+    pub fn load(&mut self, dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
+        self.generator.load(self.data.data_mut(), dump, data, fd_lookup)
     }
 
     /// yep, little bit of unsafety, as we want to invoke calls which are basically C stuffs

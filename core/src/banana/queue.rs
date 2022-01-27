@@ -62,7 +62,7 @@ impl FuzzyQ {
     }
 
     /// call callback
-    pub fn call_notify_safe<'a>(&self, call: &'a Call) -> bool {
+    pub fn call_notify_safe<'a>(&self, call: &'a mut Call) -> bool {
         let info = &self.states[&thread::current().id()];
         self.observers_call
             .iter()

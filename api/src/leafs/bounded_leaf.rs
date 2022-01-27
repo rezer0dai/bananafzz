@@ -1,6 +1,7 @@
 use std::mem;
 use std::ops::RangeInclusive;
 use std::cmp::PartialOrd;
+use std::collections::HashMap;
 
 extern crate rand;
 use rand::Rng;
@@ -10,6 +11,8 @@ use rand::seq::SliceRandom;
 extern crate core;
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
+
+use core::config::FZZCONFIG;
 
 /// arg generator for bounded values - ranges ( 1..22, 0..1, 66..888, ..)
 pub struct Bounded<T> {
@@ -42,7 +45,34 @@ impl<T> Bounded<T>
     }
 }
 
-impl<T> ISerializableArg for Bounded<T> { }
+impl<T: Copy + PartialOrd + SampleUniform + std::fmt::Debug> ISerializableArg for Bounded<T>
+{
+    fn load(&mut self, mem: &mut[u8], dump: &[u8], _data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
+        let size = mem.len();
+        let afl_data: &T = generic::data_const_unsafe::<T>(&dump[..size]);
+        *generic::data_mut_unsafe::<T>(mem) = *afl_data;
+        if rand::thread_rng().gen_bool(1./FZZCONFIG.afl_fix_ratio) {
+            return size
+        }
+
+        for bounds in self.bounds.iter() {
+            if bounds.start() > afl_data || bounds.end() < afl_data {
+                continue
+            }
+            return size
+        }
+
+        let seed = dump.iter().sum::<u8>() as usize;
+        let bounds = &self.bounds[seed % self.bounds.len()];
+        *generic::data_mut_unsafe::<T>(mem) = if bounds.start() > afl_data {
+                *bounds.start()
+            } else {
+                *bounds.end()
+            };
+
+        size
+    }
+}
 
 impl<T: Copy + PartialOrd + SampleUniform + std::fmt::Debug> IArgLeaf for Bounded<T>
 {
@@ -50,10 +80,11 @@ impl<T: Copy + PartialOrd + SampleUniform + std::fmt::Debug> IArgLeaf for Bounde
 
     fn name(&self) -> &'static str { "Bounded" }
 
-    fn generate_unsafe(&mut self, mem: &mut[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, mem: &mut[u8], _: &[u8], _: &[u8]) {
         *generic::data_mut_unsafe::<T>(mem) = match self.bounds.clone().choose(&mut rand::thread_rng()) {
             Some(bounds) => rand::thread_rng().gen_range(bounds.clone()),
             None => panic!("nothing in bound array ?"),
         };
     }
+
 }

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 extern crate rand;
 use rand::Rng;
 use rand::seq::SliceRandom;
@@ -15,6 +17,7 @@ use self::core::exec::fd_info::Fd;
 
 use super::const_leaf::Const;
 use super::phantom_leaf::Phantom;
+use super::bfl_leaf::Bfl;
 
 /// state fd for interconnected behaviour
 /// - define our state object
@@ -24,30 +27,35 @@ pub struct FdHolder {
     fds: Vec<Box<dyn IArgLeaf>>,
 }
 impl FdHolder {
-    pub fn new(size: usize, fds: Vec<Box<dyn IArgLeaf>>) -> FdHolder {
+    pub fn new(size: usize, fds: Vec<Box<dyn IArgLeaf>>) -> Bfl::<FdHolder> {
         if fds.iter().any(|fd| fd.size() > size) {
             panic!("FdHolder::new .. one of fd have bigger size than declared!")
         }
         assert!(fds.iter().all(|fd| fd.size() <= size));
-        FdHolder {
+        Bfl::new(FdHolder {
             size: size,
             fds: fds,
-        }
+        })
     }
-    pub fn dup(fd: &[u8]) -> FdHolder {
+    pub fn dup(fd: &[u8]) -> Bfl::<FdHolder> {
         FdHolder::new(fd.len(), vec![Box::new(Const::new(fd))])
     }
-    pub fn holder(size: usize) -> FdHolder {
+    pub fn holder(size: usize) -> Bfl::<FdHolder> {
         FdHolder::new(size, vec![Box::new(Phantom::new(size))])
     }
 }
 /// we just copy out whatever was generated, as it is stored in &mem before doing serialization
 impl ISerializableArg for FdHolder {
-    fn serialize(&self, mem: &[u8], _: &[u8]) -> Vec<SerializationInfo> {
+    fn serialize(&self, mem: &[u8], _: &[u8], _: &[u8]) -> Vec<SerializationInfo> {
         vec![SerializationInfo {
             offset: 0,
             prefix: String::from("shared_fd(fd_") + &generic::u8_to_str(mem) + ",",
         }]
+    }
+    fn load(&mut self, mem: &mut[u8], _dump: &[u8], poc_fd: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
+        assert!(poc_fd.len() == mem.len(), "[BFL] we got strange poc_fd {:?} should be of size {}", poc_fd, mem.len());
+        mem.clone_from_slice(&fd_lookup[poc_fd]);
+        0 
     }
 }
 impl IArgLeaf for FdHolder {
@@ -59,11 +67,11 @@ impl IArgLeaf for FdHolder {
         "Fd"
     }
 
-    fn generate_unsafe(&mut self, mem: &mut [u8], fd: &[u8]) {
+    fn generate_unsafe(&mut self, mem: &mut [u8], fd: &[u8], shared: &[u8]) {
         self.fds
             .choose_mut(&mut rand::thread_rng())
             .unwrap()
-            .generate(mem, fd);
+            .generate(mem, fd, shared);
     }
 }
 
@@ -73,8 +81,8 @@ pub struct RndFd {
 }
 
 impl RndFd {
-    pub fn new(id: StateTableId, size: usize) -> RndFd {
-        RndFd { id: id, size: size }
+    pub fn new(id: StateTableId, size: usize) -> Bfl::<RndFd> {
+        Bfl::new(RndFd { id: id, size: size })
     }
 }
 
@@ -90,7 +98,7 @@ impl IArgLeaf for RndFd {
     /// 4:6 we share valid object / state
     ///
     /// other time we provide NULL or invalid one
-    fn generate_unsafe(&mut self, mem: &mut [u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, mem: &mut [u8], _: &[u8], _: &[u8]) {
         match rand::thread_rng().gen_range(0u8..=7) {
             0 => mem.clone_from_slice(&Fd::dummy(self.size()).data()),
             1 => mem.clone_from_slice(&Fd::invalid(self.size()).data()),
@@ -114,7 +122,7 @@ impl IArgLeaf for RndFd {
 
 /// must be used within FdHolder::new argument!
 impl ISerializableArg for RndFd {
-    fn serialize(&self, _: &[u8], _: &[u8]) -> Vec<SerializationInfo> {
+    fn serialize(&self, _: &[u8], _: &[u8], _: &[u8]) -> Vec<SerializationInfo> {
         panic!("RndFd must be scoped whitin FdHolder argument!");
     }
 }

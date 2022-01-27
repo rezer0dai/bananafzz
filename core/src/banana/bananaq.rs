@@ -58,7 +58,7 @@ pub fn ctor_notify(fuzzy_obj: &Box<dyn IFuzzyObj>) -> bool {
         Err(_) => false,
     }
 }
-pub fn call_notify<'a>(call: &'a Call) -> bool {
+pub fn call_notify<'a>(call: &'a mut Call) -> bool {
     match FUZZY_QUEUE.read() {
         Ok(banana) => banana.call_notify_safe(call),
         Err(_) => false,

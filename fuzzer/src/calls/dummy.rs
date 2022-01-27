@@ -16,6 +16,6 @@ impl DummyExec for Call {
 			"dummy",
 			vec![
 			],
-			|_| { CallInfo::fail() })
+			|_| { CallInfo::fail(0) })
 	}
 }

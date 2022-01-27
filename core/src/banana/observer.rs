@@ -23,7 +23,7 @@ pub trait ICallObserver {
 ///         - however then is problem, with race-ing and loging back, but with separate module you
 ///         can solve it - manage signals, and sync at this level
 ///     - ...
-    fn notify(&self, info: &StateInfo, call: &Call) -> bool;
+    fn notify(&self, info: &StateInfo, call: &mut Call) -> bool;
 }
 /// (pre) callback per state creation
 ///

@@ -6,9 +6,9 @@ use self::core::state::state::{
 
 use super::state::*;
 
-impl IFuzzyObj for SocketState {
+impl IFuzzyObj for MarioState {
     fn fuzzy_loop(&mut self) -> bool {
-        if !self.state.do_fuzz_one() {
+        if !self.state.do_fuzz_one(&mut self.shared) {
             return false
         }
         if !self.fuzz_one() {
@@ -17,22 +17,19 @@ impl IFuzzyObj for SocketState {
         if self.state.call_view().ok() {
             println!("OK : {}", self.state.call_view().name())
         }
-        self.state.do_fuzz_update()
+        self.state.do_fuzz_update(&mut self.shared)
     }
     fn fuzzy_init(&mut self) -> bool {
-        if !self.state.do_fuzz_one() {
-            return false
-        }
-        if !self.state.call_view().ok() {
-            return true
-        }
-        self.do_init();
-        self.state.do_fuzz_update()
+        self.state.do_fuzz_one(&mut self.shared);
+
+        let fd = self.do_init();
+        self.state.init(&fd);
+        self.state.do_fuzz_update(&mut self.shared)
     }
     fn state(&self) -> &State {
         &self.state
     }
 }
 
-unsafe impl Send for SocketState {}
-unsafe impl Sync for SocketState {}
+unsafe impl Send for MarioState {}
+unsafe impl Sync for MarioState {}

@@ -40,36 +40,34 @@ impl Fd {
 pub struct CallInfo {
     success: bool,
     extra_info: Vec<u8>,
+    kin: usize,
 }
 impl CallInfo {
-    pub fn new(success: bool, extra_info: &[u8]) -> CallInfo {
+    pub fn new(success: bool, extra_info: &[u8], kin: usize) -> CallInfo {
         CallInfo {
             success: success,
             extra_info: extra_info.to_vec(),
+            kin: kin,
         }
     }
     pub fn success(&self) -> bool { self.success }
     pub fn negate(&mut self) { self.success = !self.success }
     pub fn extra_info(&self) -> &[u8] { &self.extra_info }
 
-    pub fn fail() -> CallInfo {
-        CallInfo::new(false, &[])
+    pub fn kin(&self) -> usize { self.kin }
+
+    pub fn fail(kin: usize) -> CallInfo {
+        CallInfo::new(false, &[], kin)
     }
-    pub fn succ() -> CallInfo {
-        CallInfo::new(true, &[])
+    pub fn succ(kin: usize) -> CallInfo {
+        CallInfo::new(true, &[], kin)
     }
 
-    pub fn info(data: u8) -> CallInfo {
-        CallInfo {
-            success: 0 != data && !0 != data,
-            extra_info: vec![data, 8],
-        }
-   }
-
-   pub fn infofromfd(fd: Fd) -> CallInfo {
+    pub fn infofromfd(fd: Fd, kin: usize) -> CallInfo {
         CallInfo {
             success: !fd.is_invalid(),
             extra_info: fd.data().to_vec(),
+            kin: kin,
         }
    }
 }

@@ -33,7 +33,7 @@ impl CloseExec for Call {
           unsafe { CLOSE(*sock.data_const_unsafe()) }
         }
 
-        CallInfo::succ()
+        CallInfo::succ(0)
       })
 	}
 }

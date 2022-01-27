@@ -1,12 +1,11 @@
 use std::mem;
+use std::collections::HashMap;
 
 extern crate core;
 use self::core::generator::arg::Arg;
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 use self::core::generator::serialize::SerializationInfo;
-
-use std::cell::RefCell;
 
 extern crate generic;
 
@@ -16,24 +15,30 @@ extern crate generic;
 ///     in arg we use Leaf+Composite wrappers, and there to include Pointer we need to wrap
 ///         MemoryArg Container, thus we need this Ptr Leaf do the job!
 pub struct Ptr {
-    arg: RefCell<Box<Arg>>,
+    arg: Box<Arg>,
 }
 
 impl Ptr {
     pub fn new(leaf: Box<dyn IArgLeaf>) -> Ptr {
         Ptr {
-            arg: RefCell::new(Box::new(Arg::memory_arg(leaf))),
+            arg: Box::new(Arg::memory_arg(leaf)),
         }
     }
 }
 
 /// special notation for POC, mainly because creating runtime memory pointers!
 impl ISerializableArg for Ptr {
-    fn serialize(&self, _: &[u8], fd: &[u8]) -> Vec<SerializationInfo> {
+    fn serialize(&self, _: &[u8], fd: &[u8], shared: &[u8]) -> Vec<SerializationInfo> {
         vec![SerializationInfo {
             offset: 0,
-            prefix: String::from("ArgPtr(") + &self.arg.borrow().do_serialize(fd) + ", ",
+            prefix: String::from("ArgPtr(") + &self.arg.do_serialize(fd, shared) + ", ",
         }]
+    }
+    fn dump(&self, _mem: &[u8]) -> Vec<u8> {
+        self.arg.dump()
+    }
+    fn load(&mut self, _mem: &mut[u8], dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
+        self.arg.load(dump, data, fd_lookup)
     }
 }
 
@@ -46,7 +51,7 @@ impl IArgLeaf for Ptr {
         "Ptr"
     }
 
-    fn generate_unsafe(&mut self, mem: &mut [u8], fd: &[u8]) {
-        *generic::data_mut_unsafe::<*const u8>(mem) = self.arg.borrow_mut().do_generate(fd).data_const_unsafe();
+    fn generate_unsafe(&mut self, mem: &mut [u8], fd: &[u8], shared: &[u8]) {
+        *generic::data_mut_unsafe::<*const u8>(mem) = self.arg.do_generate(fd, shared).data_const_unsafe();
     }
 }

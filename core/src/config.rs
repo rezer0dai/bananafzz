@@ -18,6 +18,7 @@ pub struct FuzzyConfig {
     pub after_creation_sleep: u64,
     pub push_count: u64,
     pub rnd_data_to_pattern: bool,
+    pub afl_fix_ratio: f64,
 }
 
 impl FuzzyConfig {

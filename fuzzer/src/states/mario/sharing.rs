@@ -3,7 +3,7 @@ use self::core::state::state::IFdState;
 
 use super::state::*;
 
-impl IFdState for SocketState {
+impl IFdState for MarioState {
     fn invalid(&self) -> bool {
         self.state.fd().is_invalid()
     }

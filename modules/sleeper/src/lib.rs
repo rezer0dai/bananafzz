@@ -25,7 +25,7 @@ struct Sleeper {
 }
 
 impl ICallObserver for Sleeper {
-    fn notify(&self, state: &StateInfo, call: &Call) -> bool {
+    fn notify(&self, state: &StateInfo, call: &mut Call) -> bool {
         if 0 == state.sucess {
             //ctors should be as fast as possible, we want sleep operations on states
             return true;

@@ -1,4 +1,6 @@
 use std::sync::Mutex;
+use std::collections::HashMap;
+
 use generator::arg::Arg;
 use banana::bananaq;
 use super::id::CallTableId;
@@ -86,7 +88,7 @@ impl Call {
         Call {
             id : id,
             name : name,
-            einfo : CallInfo::fail(),
+            einfo : CallInfo::fail(0),//0 should be undefined kin!
             total : 0,
             success : 0,
             args : args,
@@ -101,15 +103,19 @@ impl Call {
     /// 3. (do_call_impl)invoke callbacks to all modules -> forward this job to Banana Internal Manager in fact ..
     /// 4. (do_call_impl)invoke function responsible to invoke targeted call
     /// 5. store results
-    pub fn do_call(&mut self, fd: &[u8]) -> bool {
+    pub fn do_call(&mut self, fd: &[u8], shared: &mut[u8]) -> bool {
         self.total += 1;
 
         for arg in self.args.iter_mut() {
-            arg.do_generate(fd);
+            arg.do_generate(fd, shared);
         }
 
         if !self.do_call_safe() {
             return false
+        }
+
+        for arg in self.args.iter_mut() {
+            arg.do_save_shared(shared);
         }
 
         if self.einfo.success() {
@@ -117,6 +123,44 @@ impl Call {
         }
         //(self.ret <= self.ok.end && self.ret >= self.ok.start) as usize;//self.ok.contains(self.ret);
         true
+    }
+
+    pub fn dump_mem(&self) -> Vec<u8> {
+        self.args//or do .extend( in for loop
+            .iter()
+            .map(|ref arg| { arg.data().to_vec() })
+            .flat_map(move |data| data)
+            .collect::< Vec<u8> >()
+    }
+    pub fn dump_args(&self) -> Vec<u8> {
+        self.args
+            .iter()
+            .map(|ref arg| {
+                let data = arg.dump();
+                    
+                let mut sz_data = unsafe { // here may be situation of composie sizeX[sizeA, ..
+                    generic::any_as_u8_slice(&data.len()).to_vec() };
+                assert!(sz_data.len() == std::mem::size_of::<usize>());
+                sz_data.extend(&data);
+
+                sz_data
+            })
+            .flat_map(move |data| data)
+            .collect::< Vec<u8> >()
+    }
+
+    pub fn load_args(&mut self, dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) {
+        let size_size = std::mem::size_of::<usize>();
+
+        let mut off = 0;
+        let mut off_mem = 0;
+        for arg in self.args.iter_mut() {
+            let asize = arg.data().len();
+//println!("{:?} -> {:X}", dump, generic::data_const_unsafe::<usize>(&dump[off..][..size_size]));
+            let size = arg.load(&dump[size_size+off..], &data[off_mem..][..asize], fd_lookup);
+            off += size_size + size;
+            off_mem += asize;
+        }
     }
 
 /// 1. notify observers and ask for aproval
@@ -149,13 +193,13 @@ impl Call {
     /// print call to string that way we can reproduce it from PoC ( mini c++ program ) later
     ///
     /// note : this schema is novel fuzzing approach : LOOP + Generation based
-    pub fn serialize(&self, fd: &[u8]) -> String {
+    pub fn serialize(&self, fd: &[u8], shared: &[u8]) -> String {
         (self.name.to_string() + "(void" +
             &self.args
                 .iter()
                 .enumerate()
                 .map(|(ind, arg)| {
-                    let mut data = arg.do_serialize(fd);
+                    let mut data = arg.do_serialize(fd, shared);
                     if data[..3].contains("new") {
                         data = String::from("(") +
                             self.name +
@@ -176,6 +220,7 @@ impl Call {
     pub fn ok(&self) -> bool { self.einfo.success() }
     pub fn dead(&self) -> bool { self.total > FZZCONFIG.dead_call * (1 + self.success) }//from config!!
     pub fn einfo(&self) -> &[u8] { &self.einfo.extra_info() }
+    pub fn kin(&self) -> usize { self.einfo.kin() }
 
     pub fn neg_ret(&mut self) { self.einfo.negate() }
 

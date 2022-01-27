@@ -24,7 +24,7 @@ struct Mediator {
 }
 
 impl ICallObserver for Mediator {
-    fn notify(&self, state: &StateInfo, _call: &Call) -> bool {
+    fn notify(&self, state: &StateInfo, _call: &mut Call) -> bool {
         if !state.fd.is_invalid() {
             return true;
         }

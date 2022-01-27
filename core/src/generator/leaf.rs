@@ -37,13 +37,15 @@ pub trait IArgLeaf : ISerializableArg {
     ///     }
     /// }
     /// ```
-    fn generate_unsafe(&mut self, mem: &mut[u8], fd: &[u8]);
+    fn generate_unsafe(&mut self, mem: &mut[u8], fd: &[u8], shared: &[u8]);
 
     /// wrapping GenerateImpl per Argument, to check slice length corectness!
-    fn generate(&mut self, mem: &mut[u8], fd: &[u8]) {
+    fn generate(&mut self, mem: &mut[u8], fd: &[u8], shared: &[u8]) {
         if mem.len() != self.size() {
             panic!("trying to generate Argument with wrong size {} -> {} vs {}", self.name(), mem.len(), self.size());
         }
-        self.generate_unsafe(mem, fd);
+        self.generate_unsafe(mem, fd, shared);
     }
+
+    fn save_shared(&mut self, _mem: &[u8], _shared: &mut[u8]) { }
 }

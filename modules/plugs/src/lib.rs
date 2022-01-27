@@ -39,6 +39,9 @@ use libdebug::DebugConfig;
 extern crate libmediator;
 use libmediator::MediatorConfig;
 
+extern crate libbfl;
+use libbfl::BananizedFuzzyLoopConfig;
+
 #[derive(Debug, Deserialize, Serialize)]
 struct ConfigCore {
     filter: Option<FilterConfig>,
@@ -47,6 +50,7 @@ struct ConfigCore {
     limiter: Option<LimiterConfig>,
     debug: Option<DebugConfig>,
     mediator: Option<MediatorConfig>,
+    bfl: Option<BananizedFuzzyLoopConfig>,
 }
 #[derive(Debug, Deserialize, Serialize)]
 struct Config {
@@ -153,6 +157,10 @@ impl Plugins {
             "libmediator" => Observer {
                 name: module.clone(),
                 obs: libmediator::observers(&cfg.mediator),
+            },
+            "libbfl" => Observer {
+                name: module.clone(),
+                obs: libbfl::observers(&cfg.bfl),
             },
             _ => Observer {
                 name: module.clone(),

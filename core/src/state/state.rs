@@ -1,3 +1,4 @@
+use std::thread;
 use std::cmp::min;
 
 extern crate rand;
@@ -71,6 +72,8 @@ pub struct StateInfo {
     pub total: usize,
     /// num of sucessfull ( syscall return OK value ) fuzzing iterations performed; debug reasons
     pub sucess: usize,
+    /// thread id as unique identifier
+    pub uid: u64,
 }
 
 /// user mode state ( representation ) of target ( kernel object, remote object, io device, .. )
@@ -141,22 +144,22 @@ impl State {
     /// - also some blacklisting of too often rejected call - very OK by modules
     /// - and maybe tracking uniformity of selection globaly per State - forbid prefering one syscall by thread_rng ?
     ///     - in general this can be crucial part of fuzzer which i neglected to tinker with yet..
-    pub fn do_fuzz_one(&mut self) -> bool {
+    pub fn do_fuzz_one(&mut self, shared: &mut[u8]) -> bool {
         if self.info.total > self.limit {
             return false
         }
         self.info.total += 1;
+        let fd = self.info.fd.clone();
         for _ in 0..(self.groups[self.ccache.0].len() * 2) {
             self.ccache.1 = rand::thread_rng().gen_range(0..self.groups[self.ccache.0].len());
             if self.call_view().dead() {
                 continue
             }
-            let fd = self.info.fd.clone();
-            if self.call_mut().do_call(&fd.data()) {
+            if self.call_mut().do_call(&fd.data(), shared) {
                 return true
             }
         }
-        self.call_dtor();
+        self.call_dtor(shared);
         false
     }
 
@@ -165,7 +168,7 @@ impl State {
     /// - call once do_fuzz_one will return true
     /// - this basically wraps do_fuzz_update_impl, that it checks for end of fuzzing
     ///     - and then it performs closing of this State by calling dtor syscall!
-    pub fn do_fuzz_update(&mut self) -> bool {
+    pub fn do_fuzz_update(&mut self, shared: &mut[u8]) -> bool {
         //maybe better weight it against #calls in current group
         //this way we trust a lot that every call is implemented correctly == good way
         //it is quick death then, like object is no longer online
@@ -174,14 +177,14 @@ impl State {
         if self.do_fuzz_update_impl() {
             return true
         }
-        self.call_dtor();
+        self.call_dtor(shared);
         false
     }
-    fn call_dtor(&mut self) {
+    fn call_dtor(&mut self, shared: &mut[u8]) {
         if self.info.fd.is_invalid() {
             return
         }
-        self.dtor.do_call(self.info.fd.data());
+        self.dtor.do_call(self.info.fd.data(), shared);
     }
     /// update slopes - state of current State, that we can proceed to fuzz next layer of syscalls
     fn do_fuzz_update_impl(&mut self) -> bool {
@@ -274,6 +277,7 @@ impl State {
                 sucess : 0,
                 fd : Fd::empty(),
                 id : id,
+                uid : u64::from(thread::current().id().as_u64()),
             },
             limit : min(FZZCONFIG.new_limit, limit),
             slopes : slopes,
@@ -318,12 +322,13 @@ impl State {
                 sucess : 0,
                 fd : fd.clone(),
                 id : id,
+                uid : u64::from(thread::current().id().as_u64()),
             },
             limit : min(FZZCONFIG.dup_limit, limit),
             slopes : slopes,
             groups : groups,
             dtor: dtor,
-            ccache : (level, !0)
+            ccache : (level, !0),
         }
     }
 }

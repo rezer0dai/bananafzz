@@ -41,7 +41,7 @@ impl DupExec for Call {
           [0xffu8; FD_SIZE]
         };
 
-        CallInfo::infofromfd(Fd::new(&fd))
+        CallInfo::infofromfd(Fd::new(&fd), 0)
       })
 	}
 }
