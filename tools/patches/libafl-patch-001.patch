@@ -1,0 +1,1081 @@
+From 412669639f39824be9774cb1e49f3ae2f23accd0 Mon Sep 17 00:00:00 2001
+From: ChiefBanana <eatfigs@teambananas.ai>
+Date: Mon, 21 Feb 2022 15:38:36 -0500
+Subject: [PATCH] BFL dirty push
+
+---
+ libafl/Cargo.toml                  |   3 +
+ libafl/src/bolts/launcher.rs       |  14 +-
+ libafl/src/fuzzer/mod.rs           |   2 +
+ libafl/src/lib.rs                  |   2 +
+ libafl/src/mutators/banana.rs      | 200 +++++++++++++++++++++++
+ libafl/src/mutators/bananizer.rs   | 145 +++++++++++++++++
+ libafl/src/mutators/bfl.rs         | 244 +++++++++++++++++++++++++++++
+ libafl/src/mutators/mod.rs         |   9 ++
+ libafl/src/mutators/mutations.rs   |  10 +-
+ libafl/src/mutators/scheduled.rs   |  82 +++++++++-
+ libafl_cc/build.rs                 |   6 +-
+ libafl_cc/src/afl-coverage-pass.cc |   6 +-
+ libafl_cc/src/clang.rs             |   1 +
+ libafl_cc/src/lib.rs               |   5 +
+ libafl_targets/Cargo.toml          |   2 +
+ libafl_targets/src/libfuzzer.c     |   5 +
+ libafl_targets/src/libfuzzer.rs    |  16 +-
+ 17 files changed, 729 insertions(+), 23 deletions(-)
+ create mode 100644 libafl/src/mutators/banana.rs
+ create mode 100644 libafl/src/mutators/bananizer.rs
+ create mode 100644 libafl/src/mutators/bfl.rs
+
+diff --git a/libafl/Cargo.toml b/libafl/Cargo.toml
+index 8f8b3988..702b915e 100644
+--- a/libafl/Cargo.toml
++++ b/libafl/Cargo.toml
+@@ -29,6 +29,7 @@ llmp_bind_public = [] # If set, llmp will bind to 0.0.0.0, allowing cross-device
+ llmp_compression = ["miniz_oxide"] # llmp compression using GZip
+ llmp_debug = [] # Enables debug output for LLMP
+ llmp_small_maps = [] # reduces initial map size for llmp
++easydebug = []
+ 
+ [build-dependencies]
+ rustversion = "1.0"
+@@ -82,6 +83,8 @@ z3 = { version = "0.11", features = ["static-link-z3"], optional = true } # for
+ # !!! this create requires nightly
+ grammartec = { version = "0.1", optional = true }
+ 
++bfl = { path = "../../bananafzz/modules/bfl" }
++
+ [target.'cfg(unix)'.dependencies]
+ libc = "0.2" # For (*nix) libc
+ uds = "0.2.3"
+diff --git a/libafl/src/bolts/launcher.rs b/libafl/src/bolts/launcher.rs
+index 33e08b64..d87127f8 100644
+--- a/libafl/src/bolts/launcher.rs
++++ b/libafl/src/bolts/launcher.rs
+@@ -10,9 +10,9 @@
+ //! On `Unix` systems, the [`Launcher`] will use `fork` if the `fork` feature is used for `LibAFL`.
+ //! Else, it will start subsequent nodes with the same commandline, and will set special `env` variables accordingly.
+ 
+-#[cfg(all(feature = "std", any(windows, not(feature = "fork"))))]
++#[cfg(all(feature = "std", any(windows, not(feature = "fork"), feature = "easydebug")))]
+ use crate::bolts::os::startable_self;
+-#[cfg(all(unix, feature = "std", feature = "fork"))]
++#[cfg(all(unix, feature = "std", feature = "fork", not(feature = "easydebug")))]
+ use crate::bolts::os::{dup2, fork, ForkResult};
+ #[cfg(feature = "std")]
+ use crate::{
+@@ -27,15 +27,15 @@ use crate::{
+ use core::fmt::{self, Debug, Formatter};
+ #[cfg(feature = "std")]
+ use core::marker::PhantomData;
+-#[cfg(all(feature = "std", any(windows, not(feature = "fork"))))]
++#[cfg(all(feature = "std", any(windows, not(feature = "fork"), feature = "easydebug")))]
+ use core_affinity::CoreId;
+ #[cfg(feature = "std")]
+ use serde::de::DeserializeOwned;
+ #[cfg(feature = "std")]
+ use std::net::SocketAddr;
+-#[cfg(all(feature = "std", any(windows, not(feature = "fork"))))]
++#[cfg(all(feature = "std", any(windows, not(feature = "fork"), feature = "easydebug")))]
+ use std::process::Stdio;
+-#[cfg(all(unix, feature = "std", feature = "fork"))]
++#[cfg(all(unix, feature = "std", feature = "fork", not(feature = "easydebug")))]
+ use std::{fs::File, os::unix::io::AsRawFd};
+ #[cfg(feature = "std")]
+ use typed_builder::TypedBuilder;
+@@ -118,7 +118,7 @@ where
+     S: DeserializeOwned,
+ {
+     /// Launch the broker and the clients and fuzz
+-    #[cfg(all(unix, feature = "std", feature = "fork"))]
++    #[cfg(all(unix, feature = "std", feature = "fork", not(feature = "easydebug")))]
+     #[allow(clippy::similar_names)]
+     pub fn launch(&mut self) -> Result<(), Error> {
+         if self.run_client.is_none() {
+@@ -220,7 +220,7 @@ where
+     }
+ 
+     /// Launch the broker and the clients and fuzz
+-    #[cfg(all(feature = "std", any(windows, not(feature = "fork"))))]
++    #[cfg(all(feature = "std", any(windows, not(feature = "fork"), feature = "easydebug")))]
+     #[allow(unused_mut, clippy::match_wild_err_arm)]
+     pub fn launch(&mut self) -> Result<(), Error> {
+         let is_client = std::env::var(_AFL_LAUNCHER_CLIENT);
+diff --git a/libafl/src/fuzzer/mod.rs b/libafl/src/fuzzer/mod.rs
+index cc049bd8..06724ac7 100644
+--- a/libafl/src/fuzzer/mod.rs
++++ b/libafl/src/fuzzer/mod.rs
+@@ -350,6 +350,8 @@ where
+             }
+         }
+ 
++        let res = if state.corpus().count() > 200 { res } else { ExecuteInputResult::Corpus };
++
+         match res {
+             ExecuteInputResult::None => {
+                 self.feedback_mut().discard_metadata(state, &input)?;
+diff --git a/libafl/src/lib.rs b/libafl/src/lib.rs
+index 7fec940b..92c42ee5 100644
+--- a/libafl/src/lib.rs
++++ b/libafl/src/lib.rs
+@@ -67,6 +67,8 @@ Welcome to `LibAFL`
+ extern crate alloc;
+ #[macro_use]
+ extern crate static_assertions;
++#[deny(unused_extern_crates)]
++extern crate libbfl;
+ #[cfg(feature = "std")]
+ pub use ctor::ctor;
+ 
+diff --git a/libafl/src/mutators/banana.rs b/libafl/src/mutators/banana.rs
+new file mode 100644
+index 00000000..196be5b7
+--- /dev/null
++++ b/libafl/src/mutators/banana.rs
+@@ -0,0 +1,200 @@
++use crate::{
++    bolts::rands::Rand,
++    inputs::{HasBytesVec, Input},
++    state::HasRand,
++    libbfl::info::{PocDataHeader, PocCallDescription},
++    mutators::bananizer::get_calls_count,
++};
++
++use std::collections::BTreeSet;
++
++use core::mem::size_of;
++
++#[derive(Default, Debug)]
++pub struct BananaState {
++    stage_idx: i32,
++    calls: BTreeSet<usize>,
++    poc: Vec<u8>,
++    crossdone: bool,
++}
++impl BananaState {
++    pub fn new() -> Self {
++        BananaState {
++            stage_idx : 42,
++            crossdone : false,
++            calls : BTreeSet::new(),
++            poc : vec![0u8; 0x10000],
++        }
++    }
++
++    pub fn crossdone(&self) -> bool {
++        self.crossdone
++    }
++
++    pub fn crossover(&mut self) {
++        self.crossdone = true;
++    }
++
++    pub unsafe fn poc_mem(&self) -> *mut u8 {
++        std::mem::transmute(self.poc.as_ptr())
++    }
++
++    fn new_bananas(&self, input: &[u8]) -> usize {
++        let magic = unsafe { 
++            &::std::slice::from_raw_parts(
++                input.as_ptr() as *const PocDataHeader, 1)[0] }.magic;
++
++        let poc_header = unsafe { 
++            &::std::slice::from_raw_parts(
++                self.poc.as_ptr() as *const PocDataHeader, 1)[0] };
++
++        if magic != poc_header.magic {
++            return 0
++        }
++
++        if !0 != poc_header.insert_ind {
++            panic!("[BFL] bananafzz did not clear insert_ind in poc!!")
++        }
++
++        poc_header.total_size
++    }
++    fn register_stage<I: Input + HasBytesVec>(&mut self, stage_idx: i32, input: &mut I) {
++        if self.stage_idx == stage_idx {
++            return
++        }
++        self.crossdone = false;
++        self.calls.clear();
++        self.stage_idx = stage_idx;
++
++        let nb_size = self.new_bananas(input.bytes());
++        if 0 == nb_size {
++            return//no banana inserted in latest AFL fuzz_one round..
++        }
++        input
++            .bytes_mut()
++            .splice(0.., self.poc[..nb_size].iter().copied());
++
++        unsafe { 
++            &mut ::std::slice::from_raw_parts_mut(
++                self.poc.as_ptr() as *mut PocDataHeader, 1)[0] 
++        }.magic = 0;
++    }
++
++    pub fn select_input_ind<I: Input + HasBytesVec, S: HasRand>(
++        &mut self,
++        stage_idx: i32,
++        seed: &mut S,
++        input: &mut I,
++        ) -> usize 
++    {
++        self.register_stage(stage_idx, input);
++        self.select_input_ind_impl(seed, input.bytes(), 0)
++    }
++    pub fn select_input_call<I: Input + HasBytesVec, S: HasRand>(
++        &mut self,
++        stage_idx: i32,
++        seed: &mut S,
++        input: &mut I,
++        ) -> PocCallDescription 
++    {
++        self.register_stage(stage_idx, input);
++        self.register_call(input, seed);
++        self.select_call(seed, input.bytes(), 0)
++    }
++    pub fn select_kin_call<I: Input + HasBytesVec, S: HasRand>(
++        &mut self,
++        seed: &mut S,
++        input: &I,
++        kin: usize,
++        other_bytes: &[u8],
++        ) -> PocCallDescription 
++    {
++        self.register_kins(input, kin);
++        self.select_call(seed, other_bytes, kin)
++    }
++
++    fn select_input_ind_impl<S: HasRand>(
++        &mut self,
++        seed: &mut S,
++        input: &[u8],
++        kin: usize
++        ) -> usize
++    {
++        if 0 == self.calls.len() {
++            return 0
++        }
++
++        let n_calls = get_calls_count(input);
++        let poc_desc = unsafe { 
++            ::std::slice::from_raw_parts(
++                input[size_of::<PocDataHeader>()..]
++                    .as_ptr() as *const PocCallDescription, n_calls) };
++
++        let selection = self.calls
++            .iter()
++            .filter(|&&ind| 0 == kin || kin == poc_desc[ind].kin)
++            .collect::<Vec<&usize>>();//nah i dont like this collect ..
++
++        if 0 == selection.len() {
++            return 0
++        }
++
++        *seed.rand_mut().choose(selection)
++    }
++    fn select_call<S: HasRand>(
++        &mut self,
++        seed: &mut S,
++        input: &[u8],
++        kin: usize
++        ) -> PocCallDescription 
++    {
++        let ind = self.select_input_ind_impl(seed, input, kin);
++
++        let poc_desc = unsafe { 
++            ::std::slice::from_raw_parts(
++                input[size_of::<PocDataHeader>()..]
++                    .as_ptr() as *const PocCallDescription, ind + 1) };
++
++        poc_desc[ind]
++    }
++
++    fn register_call<I: Input + HasBytesVec, S: HasRand>(&mut self, input: &I, seed: &mut S) {
++        let n_calls = get_calls_count(input.bytes());
++        if self.calls.len() > 1 + n_calls / 3 {
++            return
++        }
++
++//here is the quesion, to replace by random choose + set insert or to force random + insert ?
++/*
++        if seed.rand_mut().choose(0..n_calls) < 2 * self.calls.len() {
++            return
++        }
++*/
++        let ind = seed.rand_mut().choose(0..n_calls);
++/*
++        while self.calls.contains(&ind) {
++            ind = (ind + 1) % n_calls;
++        }
++*/
++
++        self.calls.insert(ind);
++    }
++    fn register_kins<I: Input + HasBytesVec>(&mut self, input: &I, kin: usize) {
++        let n_calls = get_calls_count(input.bytes());
++        let poc_desc = unsafe { 
++            ::std::slice::from_raw_parts(
++                input
++                    .bytes()[size_of::<PocDataHeader>()..]
++                    .as_ptr() as *const PocCallDescription, n_calls) };
++
++        for ind in 0..n_calls {
++            if poc_desc[ind].size < size_of::<usize>() {
++                panic!("[BFL] incorrect call data size {:?}/{:?} => {:?}", ind, n_calls, poc_desc[ind])
++            }
++            //0 == kin, means choose random call
++            if 0 == kin || kin == poc_desc[ind].kin {
++                self.calls.insert(ind);
++            }
++        }
++    }
++}
+diff --git a/libafl/src/mutators/bananizer.rs b/libafl/src/mutators/bananizer.rs
+new file mode 100644
+index 00000000..c0194eb2
+--- /dev/null
++++ b/libafl/src/mutators/bananizer.rs
+@@ -0,0 +1,145 @@
++/// bananizing AFL data format to be able to fuzz effectively generative api based args
++
++use crate::{
++    bolts::{rands::Rand, tuples::Named},
++    inputs::{bytes::BytesInput, HasBytesVec, Input},
++    mutators::{MutationResult, Mutator, banana::BananaState},
++    state::HasRand,
++    Error,
++    libbfl::info::{PocDataHeader, PocCallHeader},
++};
++
++use std::{rc::Rc, sync::RwLock};
++use core::{
++    mem::size_of,
++    fmt::Debug,
++};
++
++//#[allow(missing_docs)]
++pub trait IBananizer<I, S> : Mutator<I, S> + Named + Debug
++where
++        I: Input + HasBytesVec,
++        S: HasRand,
++{}
++
++//#[allow(missing_docs)]
++pub struct BananizedAdapt<I, S> {
++    state: Rc<RwLock<BananaState>>,
++    name : String,
++    mutator: Box<dyn IBananizer<I, S>>,
++}
++
++impl<I, S> Debug for BananizedAdapt<I, S> {
++    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> { 
++        self.mutator.fmt(fmt)
++    }
++}
++
++impl<I, S> Mutator<I, S> for BananizedAdapt<I, S>
++where
++        I: Input + HasBytesVec + From<BytesInput>,
++        S: HasRand,
++{
++    fn mutate(
++        &mut self,
++        seed: &mut S,
++        input: &mut I,
++        stage_idx: i32,
++    ) -> Result<MutationResult, Error> {
++        if input.bytes().is_empty() {
++            return Ok(MutationResult::Skipped)
++        }
++
++        let mut banana_state = self.state.write().unwrap();
++        let call = banana_state.select_input_call(stage_idx, seed, input);
++
++        let head = unsafe { 
++            ::std::slice::from_raw_parts(
++                input.bytes()[call.offset..].as_ptr() as *const PocCallHeader, 1)[0] };
++
++        if 0 == head.dmp_size {
++            return Ok(MutationResult::Skipped)
++        }
++        assert!(head.len == call.size, "incosisten header with description");
++        let end = call.offset + head.len;
++        let mut off = end - head.dmp_size;
++        if end == off {
++            return Ok(MutationResult::Skipped)
++        }
++
++        let ind = seed.rand_mut().choose(off..end);
++
++        let size_size = size_of::<usize>();
++        let size = loop {//trhough full input {<size, [u8]>, .. }
++            let size: usize = unsafe { 
++                ::std::slice::from_raw_parts(
++                    input.bytes()[off..].as_ptr() as *const usize, 1)[0] };
++
++            if 0 == size {
++                panic!("[BFL] size desc==0;\n\t{:?}\n\t{:?}", call, head)
++            }
++
++            if off + size_size + size > ind {
++                break size
++            }
++
++            off += size_size + size;
++        };
++        off += size_size; // skip size description
++
++        if off + size > end {
++            panic!("[BFL] parsed out of call data {:X}+{:X}>{:X}\n>>> {:?}\n", off, size, end, call)
++        }
++
++        let ind = if ind > off { 
++            ind - off
++        } else { 0 }; // we hit size description
++
++        let mut banana_input: I = BytesInput::new(
++            input.bytes()[off..][..size][ind..].to_vec()).into();
++
++        let result = self.mutator.mutate(seed, &mut banana_input, stage_idx);
++
++        assert!(size - banana_input.bytes().len() == ind);
++        (&input.bytes_mut()[off..][..size][ind..])
++            .clone_from(&banana_input.bytes());
++
++        result
++    }
++}
++
++impl<I, S> Named for BananizedAdapt<I, S>
++{
++    fn name(&self) -> &str {
++        &self.name
++    }
++}
++
++//#[allow(missing_docs)]
++impl<I, S> BananizedAdapt<I, S>
++where
++        I: Input + HasBytesVec,
++        S: HasRand,
++{
++    #[must_use]
++    pub fn new(state: Rc<RwLock<BananaState>>, mutator: Box::<dyn IBananizer<I, S>>) -> Self {
++        BananizedAdapt {
++            name : "Bananized@".to_owned() + mutator.name(),
++            mutator: mutator,
++            state: state,
++        }
++    }
++}
++
++pub(crate) fn get_calls_count(input: &[u8]) -> usize {
++    if input.len() < size_of::<PocDataHeader>() {
++        panic!("[BFL] incorrect call data")
++    }
++    let poc_header = unsafe { 
++        &::std::slice::from_raw_parts(
++            input.as_ptr() as *const PocDataHeader, 1)[0] };
++    if 0 == poc_header.calls_count {
++        panic!("[BFL] incorrect call data count==0")
++    }
++    poc_header.calls_count
++}
+diff --git a/libafl/src/mutators/bfl.rs b/libafl/src/mutators/bfl.rs
+new file mode 100644
+index 00000000..cd584762
+--- /dev/null
++++ b/libafl/src/mutators/bfl.rs
+@@ -0,0 +1,244 @@
++/// bananizing AFL data format to be able to fuzz effectively generative api based args
++
++use crate::{
++    bolts::{rands::Rand, tuples::Named},
++    inputs::{HasBytesVec, Input},
++    mutators::{MutationResult, Mutator, banana::BananaState, bananizer::get_calls_count},
++    corpus::Corpus,
++    state::{HasCorpus, HasRand},
++    Error,
++    libbfl::{crossover, info::PocDataHeader},
++};
++
++use std::{rc::Rc, sync::RwLock};
++
++use core::{
++    mem::size_of,
++    fmt::Debug,
++};
++
++/// Splice mutation for two diff banana inputs
++/// - we skip banana cross-over, Splice could do that job
++/// - also adding InsertBananasMutator
++#[derive(Debug, Default)]
++pub struct CrossoverBananasMutator {
++    state: Rc<RwLock<BananaState>>,
++}
++
++
++impl<I, S> Mutator<I, S> for CrossoverBananasMutator
++where
++    I: Input + HasBytesVec,
++    S: HasRand + HasCorpus<I>,
++{
++    #[allow(clippy::cast_sign_loss)]
++    fn mutate(
++        &mut self,
++        state: &mut S,
++        input: &mut I,
++        stage_idx: i32,
++    ) -> Result<MutationResult, Error> {
++        if size_of::<PocDataHeader>() == input.bytes().len() {
++            return Ok(MutationResult::Skipped)
++        }
++        if self.state.read().unwrap().crossdone() {
++            return Ok(MutationResult::Skipped)
++        }
++        // We don't want to use the testcase we're already using for splicing
++        let count = state.corpus().count();
++        let idx = state.rand_mut().below(count as u64) as usize;
++        if let Some(cur) = state.corpus().current() {
++            if idx == *cur {
++                return Ok(MutationResult::Skipped);
++            }
++        }
++
++        let other_bytes = {
++            let mut other_testcase = state.corpus().get(idx)?.borrow_mut();
++            let other = other_testcase.load_input()?;
++            other.bytes().to_vec()
++        };
++
++        let mut banana_state = self.state.write().unwrap();
++        let ind_a = banana_state.select_input_ind(stage_idx, state, input);
++
++        let cc_b = get_calls_count(&other_bytes);
++        let ind_b = state.rand_mut().choose(0..cc_b);
++
++        let call_c = crossover::do_bananized_crossover(
++            input.bytes(), ind_a,
++            &other_bytes, ind_b,
++            state.rand_mut().choose(ind_b..cc_b));
++
++        if 0 == call_c.len() {
++            return Ok(MutationResult::Skipped)
++        }
++
++        input
++            .bytes_mut()
++            .splice(0.., call_c.iter().copied());
++
++        banana_state.crossover();
++
++        Ok(MutationResult::Mutated)
++    }
++}
++
++impl Named for CrossoverBananasMutator {
++    fn name(&self) -> &str {
++        "CrossoverBananasMutator"
++    }
++}
++
++impl CrossoverBananasMutator {
++    /// Creates a new [`CrossoverBananasMutator`].
++    #[must_use]
++    pub fn new(state: Rc<RwLock<BananaState>>) -> Self {
++        CrossoverBananasMutator {
++            state: state,
++        }
++    }
++}
++
++#[derive(Debug, Default)]
++pub struct SpliceBananasMutator {
++    state: Rc<RwLock<BananaState>>,
++}
++
++impl<I, S> Mutator<I, S> for SpliceBananasMutator
++where
++    I: Input + HasBytesVec,
++    S: HasRand + HasCorpus<I>,
++{
++    #[allow(clippy::cast_sign_loss)]
++    fn mutate(
++        &mut self,
++        state: &mut S,
++        input: &mut I,
++        stage_idx: i32,
++    ) -> Result<MutationResult, Error> {
++        if size_of::<PocDataHeader>() == input.bytes().len() {
++            return Ok(MutationResult::Skipped)
++        }
++        // We don't want to use the testcase we're already using for splicing
++        let count = state.corpus().count();
++        let idx = state.rand_mut().below(count as u64) as usize;
++        if let Some(cur) = state.corpus().current() {
++            if idx == *cur {
++                return Ok(MutationResult::Skipped);
++            }
++        }
++
++        let other_bytes = {
++            let mut other_testcase = state.corpus().get(idx)?.borrow_mut();
++            let other = other_testcase.load_input()?;
++            other.bytes().to_vec()
++        };
++        if size_of::<PocDataHeader>() == other_bytes.len() {
++            return Ok(MutationResult::Skipped)
++        }
++
++        let mut banana_state = self.state.write().unwrap();
++
++        let call_a = banana_state.select_input_call(stage_idx, state, input);
++        if 0 == call_a.kin { // non-mutable call selected
++            return Ok(MutationResult::Skipped);
++        }
++        let call_b = banana_state.select_kin_call(state, input, call_a.kin, &other_bytes);
++        if call_a.kin != call_b.kin { // not-compatible call was selected
++            return Ok(MutationResult::Skipped);
++        }
++
++        let start_a = size_of::<PocDataHeader>() + call_a.offset;
++        let start_b = size_of::<PocDataHeader>() + call_a.offset;
++        let split_at = state.rand_mut().choose(0..call_a.size);
++
++        if call_a.size != call_b.size {
++            panic!("[BFL] in-compatible calls meet at splice, with same kin!! {:?} vs {:?}", call_a, call_b)
++        }
++
++        input
++            .bytes_mut()[start_a..][split_at..call_a.size]
++            .clone_from_slice(
++                &other_bytes[start_b..][split_at..call_a.size]);
++
++        Ok(MutationResult::Mutated)
++    }
++}
++
++impl Named for SpliceBananasMutator {
++    fn name(&self) -> &str {
++        "SpliceBananasMutator"
++    }
++}
++
++impl SpliceBananasMutator {
++    /// Creates a new [`SpliceBananasMutator`].
++    #[must_use]
++    pub fn new(state: Rc<RwLock<BananaState>>) -> Self {
++        SpliceBananasMutator {
++            state: state,
++        }
++    }
++}
++
++#[derive(Debug, Default)]
++pub struct InsertBanana {
++    state: Rc<RwLock<BananaState>>,
++}
++
++impl<I, S> Mutator<I, S> for InsertBanana
++where
++    I: Input + HasBytesVec,
++    S: HasRand + HasCorpus<I>,
++{
++    #[allow(clippy::cast_sign_loss)]
++    fn mutate(
++        &mut self,
++        state: &mut S,
++        input: &mut I,
++        stage_idx: i32,
++    ) -> Result<MutationResult, Error> {
++        // lets select where we will place call, preferably connected to calls mutated by AFL logic
++/*
++// TESTING performance of bananafzz repro only
++        if 66 == unsafe { 
++            &::std::slice::from_raw_parts(
++                input.bytes().as_ptr() as *const PocDataHeader, 1)[0] 
++        }.magic { return Ok(MutationResult::Mutated) }
++*/
++        let poc_header = unsafe { 
++            &mut ::std::slice::from_raw_parts_mut(
++                input.bytes_mut().as_ptr() as *mut PocDataHeader, 1)[0] };
++
++        if !0 != poc_header.insert_ind {
++            return Ok(MutationResult::Skipped)
++        }
++
++        let mut banana_state = self.state.write().unwrap();
++
++        let ind = banana_state.select_input_ind(stage_idx, state, input);
++        
++        poc_header.insert_ind = ind;
++
++        Ok(MutationResult::Mutated)
++//        poc_header.insert_ind = !0;
++//        Ok(MutationResult::Skipped)
++    }
++}
++
++impl Named for InsertBanana {
++    fn name(&self) -> &str {
++        "InsertBanana"
++    }
++}
++
++impl InsertBanana {
++    /// Creates a new [`InsertBanana`].
++    #[must_use]
++    pub fn new(state: Rc<RwLock<BananaState>>) -> Self {
++        InsertBanana {
++            state: state,
++        }
++    }
++}
+diff --git a/libafl/src/mutators/mod.rs b/libafl/src/mutators/mod.rs
+index c8901988..146911c5 100644
+--- a/libafl/src/mutators/mod.rs
++++ b/libafl/src/mutators/mod.rs
+@@ -14,6 +14,15 @@ pub mod gramatron;
+ pub use gramatron::*;
+ pub mod grimoire;
+ pub use grimoire::*;
++#[allow(missing_docs)]
++pub mod bananizer;
++pub use bananizer::*;
++#[allow(missing_docs)]
++pub mod banana;
++pub use banana::*;
++#[allow(missing_docs)]
++pub mod bfl;
++pub use bfl::*;
+ 
+ #[cfg(feature = "nautilus")]
+ pub mod nautilus;
+diff --git a/libafl/src/mutators/mutations.rs b/libafl/src/mutators/mutations.rs
+index 9d9c0651..b2a8cbe9 100644
+--- a/libafl/src/mutators/mutations.rs
++++ b/libafl/src/mutators/mutations.rs
+@@ -1,6 +1,7 @@
+ //! A wide variety of mutations used during fuzzing.
+ 
+ use crate::{
++
+     bolts::{rands::Rand, tuples::Named},
+     corpus::Corpus,
+     inputs::{HasBytesVec, Input},
+@@ -13,6 +14,7 @@ use alloc::{borrow::ToOwned, vec::Vec};
+ use core::{
+     cmp::{max, min},
+     mem::size_of,
++    fmt::Debug,
+ };
+ 
+ /// Mem move in the own vec
+@@ -1076,7 +1078,6 @@ where
+                 return Ok(MutationResult::Skipped);
+             }
+         }
+-
+         let (first_diff, last_diff) = {
+             let mut other_testcase = state.corpus().get(idx)?.borrow_mut();
+             let other = other_testcase.load_input()?;
+@@ -1184,7 +1185,8 @@ mod tests {
+         S: HasRand + HasCorpus<I> + HasMetadata + HasMaxSize,
+     {
+         tuple_list!(
+-            BitFlipMutator::new(),
++            BananizedAdapt::new(Box::new(SpliceBananasMutator::new())),
++            BananizedAdapt::new(Box::new(BitFlipMutator::new())),
+             ByteFlipMutator::new(),
+             ByteIncMutator::new(),
+             ByteDecMutator::new(),
+@@ -1195,14 +1197,14 @@ mod tests {
+             DwordAddMutator::new(),
+             QwordAddMutator::new(),
+             ByteInterestingMutator::new(),
+-            WordInterestingMutator::new(),
++            BananizedAdapt::new(Box::new(WordInterestingMutator::new())),
+             DwordInterestingMutator::new(),
+             BytesDeleteMutator::new(),
+             BytesDeleteMutator::new(),
+             BytesDeleteMutator::new(),
+             BytesDeleteMutator::new(),
+             BytesExpandMutator::new(),
+-            BytesInsertMutator::new(),
++            BananizedAdapt::new(Box::new(BytesInsertMutator::new())),
+             BytesRandInsertMutator::new(),
+             BytesSetMutator::new(),
+             BytesRandSetMutator::new(),
+diff --git a/libafl/src/mutators/scheduled.rs b/libafl/src/mutators/scheduled.rs
+index c232473d..8ae77bd7 100644
+--- a/libafl/src/mutators/scheduled.rs
++++ b/libafl/src/mutators/scheduled.rs
+@@ -1,12 +1,14 @@
+ //! The `ScheduledMutator` schedules multiple mutations internally.
+ 
+ use alloc::{string::String, vec::Vec};
++use std::{rc::Rc, sync::RwLock};
+ use core::{
+     fmt::{self, Debug},
+     marker::PhantomData,
+ };
+ use serde::{Deserialize, Serialize};
+ 
++#[allow(unused)]
+ use crate::{
+     bolts::{
+         rands::Rand,
+@@ -14,9 +16,14 @@ use crate::{
+         AsMutSlice, AsSlice,
+     },
+     corpus::Corpus,
+-    inputs::Input,
+-    mutators::{MutationResult, Mutator, MutatorsTuple},
+-    state::{HasCorpus, HasMetadata, HasRand},
++    inputs::{HasBytesVec, Input, BytesInput},
++    mutators::{
++        MutationResult, Mutator, MutatorsTuple,
++        bananizer::{BananizedAdapt, IBananizer},
++        banana::BananaState,
++        bfl::{CrossoverBananasMutator, SpliceBananasMutator, InsertBanana},
++    },
++    state::{HasCorpus, HasMetadata, HasRand, HasMaxSize},
+     Error,
+ };
+ 
+@@ -208,6 +215,75 @@ where
+     }
+ }
+ 
++impl<I, S> IBananizer<I, S> for BitFlipMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for ByteFlipMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for ByteIncMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for ByteDecMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for ByteNegMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for ByteRandMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for ByteAddMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for WordAddMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for DwordAddMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for QwordAddMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for ByteInterestingMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for WordInterestingMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for DwordInterestingMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for BytesSetMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for BytesRandSetMutator
++where I: Input + HasBytesVec, S: HasRand {}
++impl<I, S> IBananizer<I, S> for BytesCopyMutator
++where I: Input + HasBytesVec, S: HasRand {}
++
++#[allow(missing_docs)]
++pub fn banana_mutations<I, S>() -> (impl MutatorsTuple<I, S>, Rc<RwLock<BananaState>>)
++where
++    I: Input + HasBytesVec + From<BytesInput>,
++    S: HasRand + HasCorpus<I> + HasMetadata + HasMaxSize,
++{
++    let state = Rc::new(RwLock::new(BananaState::new()));
++    ( tuple_list!(
++        BananizedAdapt::new(Rc::clone(&state), Box::new(BitFlipMutator::new())),
++        BananizedAdapt::new(Rc::clone(&state), Box::new(ByteFlipMutator::new())),
++        BananizedAdapt::new(Rc::clone(&state), Box::new(ByteIncMutator::new())),
++        BananizedAdapt::new(Rc::clone(&state), Box::new(ByteDecMutator::new())),
++        BananizedAdapt::new(Rc::clone(&state), Box::new(ByteNegMutator::new())),
++        BananizedAdapt::new(Rc::clone(&state), Box::new(ByteRandMutator::new())),
++        BananizedAdapt::new(Rc::clone(&state), Box::new(ByteAddMutator::new())),
++        BananizedAdapt::new(Rc::clone(&state), Box::new(WordAddMutator::new())),
++        BananizedAdapt::new(Rc::clone(&state), Box::new(DwordAddMutator::new())),
++        BananizedAdapt::new(Rc::clone(&state), Box::new(QwordAddMutator::new())),
++
++        BananizedAdapt::new(Rc::clone(&state), Box::new(ByteInterestingMutator::new())),
++        BananizedAdapt::new(Rc::clone(&state), Box::new(WordInterestingMutator::new())),
++        BananizedAdapt::new(Rc::clone(&state), Box::new(DwordInterestingMutator::new())),
++
++        BananizedAdapt::new(Rc::clone(&state), Box::new(BytesSetMutator::new())),
++        BananizedAdapt::new(Rc::clone(&state), Box::new(BytesRandSetMutator::new())),
++
++// seems addine one more mutator and compilation will take forever
++// we will skip bytes copy mutator
++//        BananizedAdapt::new(Rc::clone(&state), Box::new(BytesCopyMutator::new())),
++
++        SpliceBananasMutator::new(Rc::clone(&state)),
++        InsertBanana::new(Rc::clone(&state)),
++        CrossoverBananasMutator::new(Rc::clone(&state)),
++    ), state )
++}
++
+ /// Get the mutations that compose the Havoc mutator
+ #[must_use]
+ pub fn havoc_mutations() -> tuple_list_type!(
+diff --git a/libafl_cc/build.rs b/libafl_cc/build.rs
+index cecc1e5a..d30eeac5 100644
+--- a/libafl_cc/build.rs
++++ b/libafl_cc/build.rs
+@@ -74,6 +74,8 @@ fn find_llvm_config() -> String {
+ }
+ 
+ fn main() {
++println!("LIBAFLL_CC try to run");
++
+     let out_dir = env::var_os("OUT_DIR").unwrap();
+     let out_dir = Path::new(&out_dir);
+     let src_dir = Path::new("src");
+@@ -154,7 +156,7 @@ fn main() {
+             .status()
+             .expect("Failed to compile cmplog-routines-pass.cc");
+ 
+-        let _ = Command::new(llvm_bindir.join("clang++"))
++        let z = Command::new(llvm_bindir.join("clang++"))
+             .args(&cxxflags)
+             .args(&custom_flags)
+             .arg(src_dir.join("afl-coverage-pass.cc"))
+@@ -164,6 +166,8 @@ fn main() {
+             .status()
+             .expect("Failed to compile afl-coverage-pass.cc");
+ 
++println!("COMPILED STATUS {:?}", z);
++
+         let _ = Command::new(llvm_bindir.join("clang++"))
+             .args(&cxxflags)
+             .args(&custom_flags)
+diff --git a/libafl_cc/src/afl-coverage-pass.cc b/libafl_cc/src/afl-coverage-pass.cc
+index c7287388..af7310b4 100644
+--- a/libafl_cc/src/afl-coverage-pass.cc
++++ b/libafl_cc/src/afl-coverage-pass.cc
+@@ -25,8 +25,6 @@
+    in ../afl-as.h.
+ 
+  */
+-
+-#include <stdio.h>
+ #include <stdlib.h>
+ #include <time.h>
+ 
+@@ -809,7 +807,9 @@ bool AFLCoverage::runOnModule(Module &M) {
+ 
+   }*/
+   
+-  if (Debug) {
++  if (true){//Debug) {
++
++
+ 
+     if (!inst_blocks)
+       fprintf(stderr, "No instrumentation targets found.\n");
+diff --git a/libafl_cc/src/clang.rs b/libafl_cc/src/clang.rs
+index 5f926f83..f11358b0 100644
+--- a/libafl_cc/src/clang.rs
++++ b/libafl_cc/src/clang.rs
+@@ -226,6 +226,7 @@ impl CompilerWrapper for ClangWrapper {
+         if !self.passes.is_empty() {
+             args.push("-fno-experimental-new-pass-manager".into());
+         }
++        self.passes.push(LLVMPasses::AFLCoverage);
+         for pass in &self.passes {
+             args.push("-Xclang".into());
+             args.push("-load".into());
+diff --git a/libafl_cc/src/lib.rs b/libafl_cc/src/lib.rs
+index 910e9887..40f4ef9c 100644
+--- a/libafl_cc/src/lib.rs
++++ b/libafl_cc/src/lib.rs
+@@ -163,6 +163,11 @@ pub trait CompilerWrapper {
+     fn run(&mut self) -> Result<Option<i32>, Error> {
+         let args = self.command()?;
+ 
++//args.push("-fPIC".to_string());
++//args.push("-Xclang".to_string());
++//args.push(args[args.len()-2].replace("cmplog-routines-pass.so", "afl-coverage-pass.so"));
++println!("PASSES {:?}", args);
++
+         if !self.is_silent() {
+             dbg!(&args);
+         }
+diff --git a/libafl_targets/Cargo.toml b/libafl_targets/Cargo.toml
+index 7ebfdee9..4241fdfe 100644
+--- a/libafl_targets/Cargo.toml
++++ b/libafl_targets/Cargo.toml
+@@ -32,3 +32,5 @@ libafl = { path = "../libafl", version = "0.7.1", default-features = false, feat
+ rangemap = "0.1"
+ serde = { version = "1.0", default-features = false, features = ["alloc"] } # serialization lib
+ # serde-big-array = "0.3.2"
++
++bananafzz = { path = "../../bananafzz/fuzzer" }
+diff --git a/libafl_targets/src/libfuzzer.c b/libafl_targets/src/libfuzzer.c
+index 6af25f03..8ae423bf 100644
+--- a/libafl_targets/src/libfuzzer.c
++++ b/libafl_targets/src/libfuzzer.c
+@@ -1,8 +1,12 @@
+ #include "common.h"
+ #include <stddef.h>
+ 
++//int LLVMFuzzerInitialize(int *argc, char ***argv);
++//int LLVMFuzzerTestOneInput(uint8_t *Data, size_t Size);
++
+ #pragma GCC diagnostic push
+ #pragma GCC diagnostic ignored "-Wunused-parameter"
++
+ EXT_FUNC(LLVMFuzzerInitialize, int, (int *argc, char ***argv), false);
+ EXT_FUNC(LLVMFuzzerCustomMutator, size_t,
+          (uint8_t *Data, size_t Size, size_t MaxSize, unsigned int Seed),
+@@ -12,6 +16,7 @@ EXT_FUNC(LLVMFuzzerCustomCrossOver, size_t,
+           const uint8_t *Data2, size_t Size2,
+           uint8_t *Out, size_t MaxOutSize, unsigned int Seed),
+          false);
++
+ EXT_FUNC_IMPL(LLVMFuzzerTestOneInput, int, (uint8_t *Data, size_t Size), false) {
+   return 0;
+ }
+diff --git a/libafl_targets/src/libfuzzer.rs b/libafl_targets/src/libfuzzer.rs
+index f912a591..b592590e 100644
+--- a/libafl_targets/src/libfuzzer.rs
++++ b/libafl_targets/src/libfuzzer.rs
+@@ -1,14 +1,20 @@
+ //! [`Libfuzzer`](https://www.llvm.org/docs/LibFuzzer.html)-style runtime wrapper for `LibAFL`.
+ //! This makes `LibAFL` interoperable with harnesses written for other fuzzers like `Libfuzzer` and [`AFLplusplus`](aflplus.plus).
+ //! We will interact with a C++ target, so use external c functionality
+-
++/*
+ extern "C" {
+-    /// int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size)
+-    fn LLVMFuzzerTestOneInput(data: *const u8, size: usize) -> i32;
++    // int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size)
++    fn LLVMFuzzerTestOneInput(data: *const u8, data: *mut u8, size: usize) -> i32;
+ 
+     // libafl_targets_libfuzzer_init calls LLVMFUzzerInitialize()
+     fn libafl_targets_libfuzzer_init(argc: *const i32, argv: *const *const *const u8) -> i32;
+ }
++*/
++use bananafzz::{//libafl_targets_libfuzzer_init;//
++    LLVMFuzzerTestOneInput,
++    libafl_targets_libfuzzer_init,
++};
++
+ 
+ /// Calls the (native) libfuzzer initialize function.
+ /// Returns the value returned by the init function.
+@@ -32,6 +38,6 @@ pub fn libfuzzer_initialize(args: &[String]) -> i32 {
+ /// # Safety
+ /// Calls the libfuzzer harness. We actually think the target is unsafe and crashes eventually, that's why we do all this fuzzing.
+ #[allow(clippy::must_use_candidate)]
+-pub fn libfuzzer_test_one_input(buf: &[u8]) -> i32 {
+-    unsafe { LLVMFuzzerTestOneInput(buf.as_ptr(), buf.len()) }
++pub fn libfuzzer_test_one_input(poc_mem: *mut u8, buf: &[u8]) -> i32 {
++    unsafe { LLVMFuzzerTestOneInput(poc_mem, buf.as_ptr(), buf.len()) }
+ }
+-- 
+2.34.1
+

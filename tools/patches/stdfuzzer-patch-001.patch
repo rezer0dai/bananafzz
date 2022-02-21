@@ -1,0 +1,535 @@
+From 4c591e6387c310d5b55d8fd37a9e03aa3a44ee08 Mon Sep 17 00:00:00 2001
+From: ChiefBanana <eatfigs@teambananas.ai>
+Date: Mon, 21 Feb 2022 15:32:09 -0500
+Subject: [PATCH] BFL dirty push
+
+---
+ Cargo.toml |  12 +-
+ main.rs    | 330 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/lib.rs |  74 +++++-------
+ 3 files changed, 367 insertions(+), 49 deletions(-)
+ create mode 100644 main.rs
+
+diff --git a/Cargo.toml b/Cargo.toml
+index fec93d5..900e940 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,9 +1,14 @@
+ [package]
+ name = "stdfuzzer"
++features = "easydebug"
+ version = "0.1.2"
+ authors = ["Andrea Fioraldi <andreafioraldi@gmail.com>"]
+ edition = "2021"
+ 
++[features]
++default = ["tui"]
++tui = []
++
+ [profile.release]
+ lto = true
+ codegen-units = 1
+@@ -16,10 +21,11 @@ which = { version = "4.0.2" }
+ num_cpus = "1.0"
+ 
+ [dependencies]
+-libafl = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "408431ba5c1c6e3571c1183e99dfdca4de089bdc" }
+-libafl_targets = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "408431ba5c1c6e3571c1183e99dfdca4de089bdc", features = ["sancov_pcguard_hitcounts", "sancov_cmplog", "libfuzzer"] }
++libafl = { path = "../LibAFL/libafl" }
++bananafzz = { path = "../bananafzz/fuzzer" }
++libafl_targets = { path = "../LibAFL/libafl_targets", features = ["sancov_pcguard_hitcounts", "sancov_cmplog", "libfuzzer"] }
+ # TODO Include it only when building cc
+-libafl_cc = { git = "https://github.com/AFLplusplus/LibAFL.git", rev = "408431ba5c1c6e3571c1183e99dfdca4de089bdc" }
++libafl_cc = { path = "../LibAFL/libafl_cc" }
+ mimalloc = { version = "*", default-features = false }
+ structopt = "0.3.25"
+ 
+diff --git a/main.rs b/main.rs
+new file mode 100644
+index 0000000..9cca0d9
+--- /dev/null
++++ b/main.rs
+@@ -0,0 +1,330 @@
++//! A libfuzzer-like fuzzer with llmp-multithreading support and restarts
++//! The `launcher` will spawn new processes for each cpu core.
++use mimalloc::MiMalloc;
++#[global_allocator]
++static GLOBAL: MiMalloc = MiMalloc;
++
++use core::time::Duration;
++use std::{env, net::SocketAddr, path::PathBuf};
++use structopt::StructOpt;
++
++use libafl::{
++    bolts::{
++        current_nanos,
++        launcher::Launcher,
++        os::Cores,
++        rands::StdRand,
++        shmem::{ShMemProvider, StdShMemProvider},
++        tuples::{tuple_list, Merge},
++        AsSlice,
++    },
++    corpus::{
++        Corpus, InMemoryCorpus, IndexesLenTimeMinimizerCorpusScheduler, OnDiskCorpus,
++        PowerQueueCorpusScheduler,
++    },
++    events::EventConfig,
++    executors::{inprocess::InProcessExecutor, ExitKind, TimeoutExecutor},
++    feedback_or,
++    feedbacks::{CrashFeedback, MapFeedbackState, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
++    fuzzer::{Fuzzer, StdFuzzer},
++    generators::RandBytesGenerator,
++    inputs::{BytesInput, HasTargetBytes},
++    monitors::tui::TuiMonitor,
++    mutators::{
++        scheduled::{havoc_mutations, tokens_mutations, StdScheduledMutator},
++        token_mutations::{I2SRandReplace, Tokens},
++        StdMOptMutator,
++    },
++    observers::{HitcountsMapObserver, StdMapObserver, TimeObserver},
++    stages::{
++        calibrate::CalibrationStage,
++        power::{PowerMutationalStage, PowerSchedule},
++        StdMutationalStage, TracingStage,
++    },
++    state::{HasCorpus, HasMetadata, StdState},
++    Error,
++};
++
++use libafl_targets::{
++    libfuzzer_initialize, libfuzzer_test_one_input, CmpLogObserver, CMPLOG_MAP, EDGES_MAP,
++    MAX_EDGES_NUM,
++};
++
++const VERSION: &str = env!("CARGO_PKG_VERSION");
++
++/// Parses a millseconds int into a [`Duration`], used for commandline arg parsing
++fn timeout_from_millis_str(time: &str) -> Result<Duration, Error> {
++    Ok(Duration::from_millis(time.parse()?))
++}
++
++#[derive(Debug, StructOpt)]
++#[structopt(
++    name = "StdFuzzer",
++    about = "StdFuzzer is the reference implementation of a generic bit-level fuzzer with LibAFL",
++    author = "Andrea Fioraldi <andreafioraldi@gmail.com>"
++)]
++struct Opt {
++    #[structopt(
++        short,
++        long,
++        parse(try_from_str = Cores::from_cmdline),
++        help = "Spawn a client in each of the provided cores. Broker runs in the 0th core. 'all' to select all available cores. 'none' to run a client without binding to any core. eg: '1,2-4,6' selects the cores 1,2,3,4,6.",
++        name = "CORES"
++    )]
++    cores: Cores,
++
++    #[structopt(
++        short = "p",
++        long,
++        help = "Choose the broker TCP port, default is 1337",
++        name = "PORT"
++    )]
++    broker_port: u16,
++
++    #[structopt(
++        parse(try_from_str),
++        short = "a",
++        long,
++        help = "Specify a remote broker",
++        name = "REMOTE"
++    )]
++    remote_broker_addr: Option<SocketAddr>,
++
++    #[structopt(
++        parse(try_from_str),
++        short,
++        long,
++        help = "Set an initial corpus directory",
++        name = "INPUT"
++    )]
++    input: Vec<PathBuf>,
++
++    #[structopt(
++        short,
++        long,
++        parse(try_from_str),
++        help = "Set the output directory, default is ./out",
++        name = "OUTPUT",
++        default_value = "./out"
++    )]
++    output: PathBuf,
++
++    #[structopt(
++        parse(try_from_str = timeout_from_millis_str),
++        short,
++        long,
++        help = "Set the exeucution timeout in milliseconds, default is 1000",
++        name = "TIMEOUT",
++        default_value = "1000"
++    )]
++    timeout: Duration,
++
++    #[structopt(
++        parse(from_os_str),
++        short = "x",
++        long,
++        help = "Feed the fuzzer with an user-specified list of tokens (often called \"dictionary\"",
++        name = "TOKENS",
++        multiple = true
++    )]
++    tokens: Vec<PathBuf>,
++
++    #[structopt(
++        long,
++        help = "Disable unicode in the UI (for old terminals)",
++        name = "DISABLE_UNICODE"
++    )]
++    disable_unicode: bool,
++}
++
++pub fn main() {
++    let workdir = env::current_dir().unwrap();
++
++    let opt = Opt::from_args();
++
++    let cores = opt.cores;
++    let broker_port = opt.broker_port;
++    let remote_broker_addr = opt.remote_broker_addr;
++    let input_dirs = opt.input;
++    let output_dir = opt.output;
++    let token_files = opt.tokens;
++    let timeout_ms = opt.timeout;
++    // let cmplog_enabled = matches.is_present("cmplog");
++
++    println!("Workdir: {:?}", workdir.to_string_lossy().to_string());
++
++    let shmem_provider = StdShMemProvider::new().expect("Failed to init shared memory");
++
++    let monitor = TuiMonitor::new(
++        format!("LibAFL's StdFuzzer v{}", VERSION),
++        !opt.disable_unicode,
++    );
++
++    let mut run_client = |state: Option<StdState<_, _, _, _, _>>, mut mgr, _core_id| {
++        // Create an observation channel using the coverage map
++        let edges = unsafe { &mut EDGES_MAP[0..MAX_EDGES_NUM] };
++        let edges_observer = HitcountsMapObserver::new(StdMapObserver::new("edges", edges));
++
++        // Create an observation channel to keep track of the execution time
++        let time_observer = TimeObserver::new("time");
++
++        // Create the Cmp observer
++        let cmplog = unsafe { &mut CMPLOG_MAP };
++        let cmplog_observer = CmpLogObserver::new("cmplog", cmplog, true);
++
++        // The state of the edges feedback.
++        let feedback_state = MapFeedbackState::with_observer(&edges_observer);
++
++        // Feedback to rate the interestingness of an input
++        // This one is composed by two Feedbacks in OR
++        let feedback = feedback_or!(
++            // New maximization map feedback linked to the edges observer and the feedback state
++            MaxMapFeedback::new_tracking(&feedback_state, &edges_observer, true, false),
++            // Time feedback, this one does not need a feedback state
++            TimeFeedback::new_with_observer(&time_observer)
++        );
++
++        // A feedback to choose if an input is a solution or not
++        let objective = feedback_or!(CrashFeedback::new(), TimeoutFeedback::new());
++
++        // If not restarting, create a State from scratch
++        let mut state = state.unwrap_or_else(|| {
++            StdState::new(
++                // RNG
++                StdRand::with_seed(current_nanos()),
++                // Corpus that will be evolved, we keep it in memory for performance
++                InMemoryCorpus::new(),
++                // Corpus in which we store solutions (crashes in this example),
++                // on disk so the user can get them after stopping the fuzzer
++                OnDiskCorpus::new(output_dir.clone()).unwrap(),
++                // States of the feedbacks.
++                // They are the data related to the feedbacks that you want to persist in the State.
++                tuple_list!(feedback_state),
++            )
++        });
++
++        // Create a dictionary if not existing
++        if state.metadata().get::<Tokens>().is_none() {
++            for tokens_file in &token_files {
++                state.add_metadata(Tokens::from_tokens_file(tokens_file)?);
++            }
++        }
++
++        // The actual target run starts here.
++        // Call LLVMFUzzerInitialize() if present.
++        let args: Vec<String> = env::args().collect();
++        if libfuzzer_initialize(&args) == -1 {
++            println!("Warning: LLVMFuzzerInitialize failed with -1")
++        }
++
++        let calibration = CalibrationStage::new(&mut state, &edges_observer);
++
++        // Setup a randomic Input2State stage
++        let i2s =
++            StdMutationalStage::new(StdScheduledMutator::new(tuple_list!(I2SRandReplace::new())));
++
++        // Setup a MOPT mutator
++        let mutator =
++            StdMOptMutator::new(&mut state, havoc_mutations().merge(tokens_mutations()), 5)?;
++
++        let power = PowerMutationalStage::new(mutator, PowerSchedule::FAST, &edges_observer);
++
++        // A minimization+queue policy to get testcasess from the corpus
++        let scheduler =
++            IndexesLenTimeMinimizerCorpusScheduler::new(PowerQueueCorpusScheduler::new());
++
++        // A fuzzer with feedbacks and a corpus scheduler
++        let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
++
++        // The wrapped harness function, calling out to the LLVM-style harness
++        let mut harness = |input: &BytesInput| {
++            let target = input.target_bytes();
++            let buf = target.as_slice();
++            libfuzzer_test_one_input(buf);
++            ExitKind::Ok
++        };
++
++        // Create the executor for an in-process function with one observer for edge coverage and one for the execution time
++        let mut executor = TimeoutExecutor::new(
++            InProcessExecutor::new(
++                &mut harness,
++                tuple_list!(edges_observer, time_observer),
++                &mut fuzzer,
++                &mut state,
++                &mut mgr,
++            )?,
++            timeout_ms,
++        );
++
++        // Secondary harness due to mut ownership
++        let mut harness = |input: &BytesInput| {
++            let target = input.target_bytes();
++            let buf = target.as_slice();
++            libfuzzer_test_one_input(buf);
++            ExitKind::Ok
++        };
++
++        // Setup a tracing stage in which we log comparisons
++        let tracing = TracingStage::new(InProcessExecutor::new(
++            &mut harness,
++            tuple_list!(cmplog_observer),
++            &mut fuzzer,
++            &mut state,
++            &mut mgr,
++        )?);
++
++        // The order of the stages matter!
++        let mut stages = tuple_list!(calibration, tracing, i2s, power);
++
++        // In case the corpus is empty (on first run), reset
++        if state.corpus().count() < 1 {
++            if input_dirs.is_empty() {
++                // Generator of printable bytearrays of max size 32
++                let mut generator = RandBytesGenerator::new(32);
++
++                // Generate 8 initial inputs
++                state
++                    .generate_initial_inputs(
++                        &mut fuzzer,
++                        &mut executor,
++                        &mut generator,
++                        &mut mgr,
++                        8,
++                    )
++                    .expect("Failed to generate the initial corpus");
++                println!(
++                    "We imported {} inputs from the generator.",
++                    state.corpus().count()
++                );
++            } else {
++                println!("Loading from {:?}", &input_dirs);
++                // Load from disk
++                state
++                    .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, &input_dirs)
++                    .unwrap_or_else(|_| {
++                        panic!("Failed to load initial corpus at {:?}", &input_dirs)
++                    });
++                println!("We imported {} inputs from disk.", state.corpus().count());
++            }
++        }
++
++        fuzzer.fuzz_loop(&mut stages, &mut executor, &mut state, &mut mgr)?;
++        Ok(())
++    };
++
++    match Launcher::builder()
++        .shmem_provider(shmem_provider)
++        .configuration(EventConfig::from_build_id())
++        .monitor(monitor)
++        .run_client(&mut run_client)
++        .cores(&cores)
++        .broker_port(broker_port)
++        .remote_broker_addr(remote_broker_addr)
++        .stdout_file(Some("/dev/null"))
++        .build()
++        .launch()
++    {
++        Ok(_) | Err(Error::ShuttingDown) => (),
++        Err(e) => panic!("{:?}", e),
++    };
++}
+diff --git a/src/lib.rs b/src/lib.rs
+index 65b4d4e..e6dbbb1 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -29,9 +29,9 @@ use libafl::{
+     fuzzer::{Fuzzer, StdFuzzer},
+     generators::RandBytesGenerator,
+     inputs::{BytesInput, HasTargetBytes},
+-    monitors::tui::TuiMonitor,
+     mutators::{
+-        scheduled::{havoc_mutations, tokens_mutations, StdScheduledMutator},
++//        scheduled::{havoc_mutations, tokens_mutations, StdScheduledMutator},
++        scheduled::{banana_mutations, tokens_mutations, StdScheduledMutator},
+         token_mutations::{I2SRandReplace, Tokens},
+         StdMOptMutator,
+     },
+@@ -45,6 +45,11 @@ use libafl::{
+     Error,
+ };
+ 
++#[cfg(feature = "tui")]
++use libafl::monitors::tui::TuiMonitor;
++#[cfg(not(feature = "tui"))]
++use libafl::monitors::SimpleMonitor;
++
+ use libafl_targets::{
+     libfuzzer_initialize, libfuzzer_test_one_input, CmpLogObserver, CMPLOG_MAP, EDGES_MAP,
+     MAX_EDGES_NUM,
+@@ -157,10 +162,13 @@ pub fn libafl_main() {
+ 
+     let shmem_provider = StdShMemProvider::new().expect("Failed to init shared memory");
+ 
++    #[cfg(feature = "tui")]
+     let monitor = TuiMonitor::new(
+-        format!("LibAFL's StdFuzzer v{}", VERSION),
++        format!("Bananaized Fuzzy Loop (BFL) <LibAFL's StdFuzzer v{} + bananafzz>v01", VERSION),
+         !opt.disable_unicode,
+     );
++    #[cfg(not(feature = "tui"))]
++    let monitor = SimpleMonitor::new(move |msg| { println!("{msg}") });
+ 
+     let mut run_client = |state: Option<StdState<_, _, _, _, _>>, mut mgr, _core_id| {
+         // Create an observation channel using the coverage map
+@@ -205,13 +213,6 @@ pub fn libafl_main() {
+             )
+         });
+ 
+-        // Create a dictionary if not existing
+-        if state.metadata().get::<Tokens>().is_none() {
+-            for tokens_file in &token_files {
+-                state.add_metadata(Tokens::from_tokens_file(tokens_file)?);
+-            }
+-        }
+-
+         // The actual target run starts here.
+         // Call LLVMFUzzerInitialize() if present.
+         let args: Vec<String> = env::args().collect();
+@@ -221,13 +222,13 @@ pub fn libafl_main() {
+ 
+         let calibration = CalibrationStage::new(&mut state, &edges_observer);
+ 
+-        // Setup a randomic Input2State stage
+-        let i2s =
+-            StdMutationalStage::new(StdScheduledMutator::new(tuple_list!(I2SRandReplace::new())));
+-
++        let (bananas, banana) = banana_mutations();
++        let poc_mem = unsafe { banana.read().unwrap().poc_mem() };
++//        let poc_mem = unsafe { std::mem::transmute(0usize) };
+         // Setup a MOPT mutator
+         let mutator =
+-            StdMOptMutator::new(&mut state, havoc_mutations().merge(tokens_mutations()), 5)?;
++//            StdMOptMutator::new(&mut state, havoc_mutations().merge(tokens_mutations()), 5)?;
++            StdMOptMutator::new(&mut state, bananas, 5)?;
+ 
+         let power = PowerMutationalStage::new(mutator, PowerSchedule::FAST, &edges_observer);
+ 
+@@ -242,7 +243,7 @@ pub fn libafl_main() {
+         let mut harness = |input: &BytesInput| {
+             let target = input.target_bytes();
+             let buf = target.as_slice();
+-            libfuzzer_test_one_input(buf);
++            libfuzzer_test_one_input(poc_mem, buf);
+             ExitKind::Ok
+         };
+ 
+@@ -262,7 +263,7 @@ pub fn libafl_main() {
+         let mut harness = |input: &BytesInput| {
+             let target = input.target_bytes();
+             let buf = target.as_slice();
+-            libfuzzer_test_one_input(buf);
++            libfuzzer_test_one_input(poc_mem, buf);
+             ExitKind::Ok
+         };
+ 
+@@ -276,38 +277,18 @@ pub fn libafl_main() {
+         )?);
+ 
+         // The order of the stages matter!
+-        let mut stages = tuple_list!(calibration, tracing, i2s, power);
++        let mut stages = tuple_list!(calibration, tracing, power);
+ 
+         // In case the corpus is empty (on first run), reset
+         if state.corpus().count() < 1 {
+-            if input_dirs.is_empty() {
+-                // Generator of printable bytearrays of max size 32
+-                let mut generator = RandBytesGenerator::new(32);
+-
+-                // Generate 8 initial inputs
+-                state
+-                    .generate_initial_inputs(
+-                        &mut fuzzer,
+-                        &mut executor,
+-                        &mut generator,
+-                        &mut mgr,
+-                        8,
+-                    )
+-                    .expect("Failed to generate the initial corpus");
+-                println!(
+-                    "We imported {} inputs from the generator.",
+-                    state.corpus().count()
+-                );
+-            } else {
+-                println!("Loading from {:?}", &input_dirs);
+-                // Load from disk
+-                state
+-                    .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, &input_dirs)
+-                    .unwrap_or_else(|_| {
+-                        panic!("Failed to load initial corpus at {:?}", &input_dirs)
+-                    });
+-                println!("We imported {} inputs from disk.", state.corpus().count());
+-            }
++            println!("Loading from {:?}", &input_dirs);
++            // Load from disk
++            state
++                .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, &input_dirs)
++                .unwrap_or_else(|_| {
++                    panic!("Failed to load initial corpus at {:?}", &input_dirs)
++                });
++            println!("We imported {} inputs from disk.", state.corpus().count());
+         }
+ 
+         fuzzer.fuzz_loop(&mut stages, &mut executor, &mut state, &mut mgr)?;
+@@ -326,6 +307,7 @@ pub fn libafl_main() {
+         .build()
+         .launch()
+     {
++//        _ => println!("START")
+         Ok(_) | Err(Error::ShuttingDown) => (),
+         Err(e) => panic!("{:?}", e),
+     };
+-- 
+2.34.1
+
