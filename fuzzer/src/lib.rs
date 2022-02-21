@@ -103,7 +103,7 @@ pub unsafe fn LLVMFuzzerTestOneInput(poc_mem: *mut u8, data: *const u8, size: us
     let plugins = plugs::Plugins::new(cfg, &push_state);
     load_plugins(plugins.observers);
 
-//    FuzzyState::fuzz(Box::new(MarioState::spawn())).join();
+    FuzzyState::fuzz(Box::new(MarioState::spawn())).join();
 
     bananaq::detach_observers();
 
