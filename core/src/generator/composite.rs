@@ -2,8 +2,10 @@ use std::ops::Range;
 use std::collections::HashMap;
 
 use super::leaf::IArgLeaf;
-use super::serialize::ISerializableArg;
-use super::serialize::SerializationInfo;
+use super::serialize::{
+    ISerializableArg, 
+    SerializationInfo
+};
 
 /// structure capable of describing any argument, composed of IArgLeafs
 ///
@@ -170,28 +172,20 @@ impl ISerializableArg for ArgComposite {
         self.args
             .iter()
             .map(|&(off, ref arg)| {
-                let data = arg.dump(&mem[off..off+arg.size()]);
-                    
-                let mut sz_data = unsafe { 
-                    generic::any_as_u8_slice(&data.len()).to_vec() };
-                assert!(sz_data.len() == std::mem::size_of::<usize>());
-                sz_data.extend(&data);
-
-                sz_data
+                arg.dump(&mem[off..off+arg.size()])
             })
             .flat_map(move |data| data)
             .collect::< Vec<u8> >()
     }
     fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
-        let size_size = std::mem::size_of::<usize>();
         let mut off_d = 0;
         for &mut (off, ref mut arg) in self.args.iter_mut() {
             let asize = arg.size();
 
             let size = arg.load(&mut mem[off..][..asize], 
-                &dump[size_size + off_d..], &data[off..][..asize], fd_lookup);
+                &dump[off_d..], &data[off..][..asize], fd_lookup);
 
-            off_d += size_size + size;
+            off_d += size;
         }
         off_d
     }

@@ -12,13 +12,8 @@ use common::table::*;
 
 use args::smb2::{MoveArg, POS_SIZE};
 
-type TDoMove = unsafe extern "system" fn(
-    fd: u32,
-    action: &u8,
-    ) -> u8;
-lazy_static! {
-    static ref DO_MOVE: TDoMove = unsafe{ std::mem::transmute::<_, TDoMove>(generic::load_api("./smbc", "do_move")) };
-}
+extern "C" { fn do_move(_fd: i32, _action: *const u8, _size: usize, _pos: *mut u8); }
+//fn do_move(_fd: i32, _action: *const u8, _size: usize, _pos: *mut u8) { print!("m"); }
 
 pub trait MoveMario {
 	fn move_mario() -> Call;
@@ -27,7 +22,7 @@ impl MoveMario for Call {
 	fn move_mario() -> Call {
 		Call::new(
 			CallIds::move_mario.into(),
-			"move_mario",
+			"xmove_mario",
 			vec![
 				Arg::primitive_arg(
 					Box::new(DeRef::new(FD_SIZE))),
@@ -39,9 +34,12 @@ impl MoveMario for Call {
 			], |args| {
         
                 if let [fd, action, pos] = &mut args[..] {
-                    unsafe { DO_MOVE(
+                    unsafe { do_move(
                         *fd.data_const_unsafe(),
-                        action.data_const_unsafe()); }
+                        action.data_const_unsafe(),
+                        action.data().len(),
+                        pos.data_mut_unsafe(),
+                        ); }
                     let pos = *generic::data_const_unsafe::<u32>(&pos.data());
                     return CallInfo::succ(pos as usize)//kin is X coordinate, for crossovers
                 }

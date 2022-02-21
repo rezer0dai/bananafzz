@@ -2,6 +2,7 @@ use std;
 
 extern crate core;
 use self::core::exec::call::Call;
+use self::core::exec::fd_info::CallInfo;
 
 use common::table::CallIds;
 
@@ -18,8 +19,8 @@ impl GameOver for Call {
 			vec![
 			],
 			|_| { 
-                println!("MARIO limit reached!");
-                std::process::exit(0)
+//                println!("MARIO limit reached!");
+                CallInfo::fail(0)
             })
         
 	}

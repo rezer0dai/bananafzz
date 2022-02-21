@@ -135,30 +135,18 @@ impl Call {
     pub fn dump_args(&self) -> Vec<u8> {
         self.args
             .iter()
-            .map(|ref arg| {
-                let data = arg.dump();
-                    
-                let mut sz_data = unsafe { // here may be situation of composie sizeX[sizeA, ..
-                    generic::any_as_u8_slice(&data.len()).to_vec() };
-                assert!(sz_data.len() == std::mem::size_of::<usize>());
-                sz_data.extend(&data);
-
-                sz_data
-            })
+            .map(|ref arg| arg.dump())
             .flat_map(move |data| data)
             .collect::< Vec<u8> >()
     }
 
     pub fn load_args(&mut self, dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) {
-        let size_size = std::mem::size_of::<usize>();
-
         let mut off = 0;
         let mut off_mem = 0;
         for arg in self.args.iter_mut() {
             let asize = arg.data().len();
-//println!("{:?} -> {:X}", dump, generic::data_const_unsafe::<usize>(&dump[off..][..size_size]));
-            let size = arg.load(&dump[size_size+off..], &data[off_mem..][..asize], fd_lookup);
-            off += size_size + size;
+            let size = arg.load(&dump[off..], &data[off_mem..][..asize], fd_lookup);
+            off += size;
             off_mem += asize;
         }
     }
@@ -173,6 +161,8 @@ impl Call {
         }
 
         self.einfo = (self.ccall)(&mut self.args);
+
+        bananaq::call_aftermath(self);
         true
     }
 /// do sync in case of single thread config flag set
@@ -186,7 +176,10 @@ impl Call {
         }
         match SYNC.lock() {
             Ok(mut qcall) => { *qcall = self.id.clone(); self.do_call_impl() },
-            Err(pois) => panic!("call-lock is poisoned, by this syscall : {:?}", *pois.into_inner()),
+            Err(pois) => {
+                println!("call-lock is poisoned, by this syscall : {:?}", *pois.into_inner());
+                std::process::exit(0)
+            }
         }
     }
 

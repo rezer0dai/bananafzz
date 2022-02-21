@@ -16,16 +16,7 @@ impl Shared {
     }
 }
 
-use std::collections::HashMap;
-
-impl ISerializableArg for Shared { 
-    fn load(&mut self, mem: &mut[u8], dump: &[u8], _data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
-println!("SHARED LOAD : {} vs {} :: {}", mem.len(), self.size(), _data.len());
-assert!(mem.len() == self.size);
-        mem.copy_from_slice(&dump[..mem.len()]);
-        mem.len()
-    }
-}
+impl ISerializableArg for Shared { }
 
 impl IArgLeaf for Shared {
     fn size(&self) -> usize { self.size }

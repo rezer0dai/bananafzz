@@ -45,6 +45,6 @@ impl ModuleCallbacks for PlugCallbacks {
         if FZZCONFIG.noisy {
             println!("[fuzzing] DONE");
         }
-        std::process::exit(0)
+//        std::process::exit(0)
     }
 }

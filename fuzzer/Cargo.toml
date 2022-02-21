@@ -1,13 +1,12 @@
 [package]
-name = "banana-fuzzer"
+name = "bananafzz"
 version = "0.1.0"
 authors = ["re:Zer0dAI <eatfigs@notpigs.com>"]
 
 [lib]
-name = "fuzzy"
+name = "bananafzz"
 path = "src/lib.rs"
 doc = false
-crate_type = ["cdylib"] 
 
 [dependencies]
 rand = "0.8.4"
@@ -20,3 +19,4 @@ generic = { path = "../generic" }
 core = { path = "../core" }
 api = { path = "../api" }
 plugs = { path = "../modules/plugs" }
+bfl = { path = "../modules/bfl" }

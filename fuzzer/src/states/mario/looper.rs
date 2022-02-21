@@ -3,6 +3,7 @@ use self::core::state::state::{
     IFuzzyObj,
     State
 };
+use self::core::exec::fd_info::Fd;
 
 use super::state::*;
 
@@ -14,13 +15,19 @@ impl IFuzzyObj for MarioState {
         if !self.fuzz_one() {
             return false
         }
-        if self.state.call_view().ok() {
-            println!("OK : {}", self.state.call_view().name())
+//        if self.state.call_view().ok() {
+//            println!("OK : {}", self.state.call_view().name())
+//        }
+        if (!self.state.do_fuzz_update(&mut self.shared)) {
+            return false
         }
-        self.state.do_fuzz_update(&mut self.shared)
+
+        true
     }
     fn fuzzy_init(&mut self) -> bool {
-        self.state.do_fuzz_one(&mut self.shared);
+        if !self.state.do_fuzz_one(&mut self.shared) {
+            return false
+        }
 
         let fd = self.do_init();
         self.state.init(&fd);

@@ -17,29 +17,34 @@ lazy_static! {
 }
 
 pub fn attach_call_observer(obs: Box<dyn ICallObserver>) {
-    match FUZZY_QUEUE.write() {
-        Ok(mut banana) => banana.observers_call.push(obs),
-        Err(_) => (),
-    };
-}
-pub fn attach_state_observer(obs: Box<dyn IStateObserver>) {
-    match FUZZY_QUEUE.write() {
-        Ok(mut banana) => banana.observers_state.push(obs),
-        Err(_) => (),
-    };
-}
-
-pub fn push(fuzzy_obj: &Box<dyn IFuzzyObj>) -> bool {
-    match FUZZY_QUEUE.write() {
-        Ok(mut banana) => banana.push_safe(fuzzy_obj.state().info()),
-        Err(_) => false,
+    if let Ok(mut banana) = FUZZY_QUEUE.write() {
+        banana.observers_call.push(obs)
     }
 }
+pub fn attach_state_observer(obs: Box<dyn IStateObserver>) {
+    if let Ok(mut banana) = FUZZY_QUEUE.write() {
+        banana.observers_state.push(obs)
+    }
+}
+pub fn detach_observers() {
+    if let Ok(mut banana) = FUZZY_QUEUE.write() {
+        banana.observers_call.clear();
+        banana.observers_state.clear();
+    }
+}
+
+pub fn empty() -> bool {
+    FUZZY_QUEUE.read().unwrap().empty()
+}
+pub fn push(fuzzy_obj: &Box<dyn IFuzzyObj>) -> bool {
+    if let Ok(mut banana) = FUZZY_QUEUE.write() {
+        banana.push_safe(fuzzy_obj.state().info())
+    } else { false }
+}
 pub fn pop() {
-    match FUZZY_QUEUE.read() {
-        Ok(banana) => banana.dtor_notify_safe(),
-        Err(_) => (),
-    };
+    if let Ok(banana) = FUZZY_QUEUE.read() {
+        banana.dtor_notify_safe()
+    }
     match FUZZY_QUEUE.write() {
         Ok(mut banana) => banana.pop_safe(),
         Err(e) => panic!("FuzzyQ: pop fail, syscall excepted .. no more to do here {}", e)
@@ -53,21 +58,24 @@ pub fn update(fuzzy_obj: &Box<dyn IFuzzyObj>) {
 }
 
 pub fn ctor_notify(fuzzy_obj: &Box<dyn IFuzzyObj>) -> bool {
-    match FUZZY_QUEUE.read() {
-        Ok(banana) => banana.ctor_notify_safe(fuzzy_obj.state().info()),
-        Err(_) => false,
-    }
+    if let Ok(banana) = FUZZY_QUEUE.read() {
+        banana.ctor_notify_safe(fuzzy_obj.state().info())
+    } else { false }
 }
 pub fn call_notify<'a>(call: &'a mut Call) -> bool {
-    match FUZZY_QUEUE.read() {
-        Ok(banana) => banana.call_notify_safe(call),
-        Err(_) => false,
+    if let Ok(banana) = FUZZY_QUEUE.read() {
+        banana.call_notify_safe(call)
+    } else { false }
+}
+
+pub fn call_aftermath<'a>(call: &'a mut Call) {
+    if let Ok(banana) = FUZZY_QUEUE.read() {
+        banana.call_aftermath_safe(call)
     }
 }
 
 pub fn get_rnd_fd(id: StateTableId) -> Fd {
-    match FUZZY_QUEUE.read() {
-        Ok(banana) => banana.get_rnd_fd_safe(id),
-        Err(_) => Fd::empty(),
-    }
+    if let Ok(banana) = FUZZY_QUEUE.read() {
+        banana.get_rnd_fd_safe(id)
+    } else { Fd::empty() }
 }

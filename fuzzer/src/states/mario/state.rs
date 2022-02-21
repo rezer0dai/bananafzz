@@ -35,7 +35,7 @@ impl MarioState {
             state : State::new(
                 "Mario",
                 StateIds::FdMario.into(),
-                100,
+                1000,
                 vec![[1, 1], [0, 1], [-1, -1]],
                 MarioState::init_calltable(),
                 Call::game_over()),
@@ -49,8 +49,10 @@ impl MarioState {
             ],
             vec![
                 Call::load_pos(),
+                Call::move_mario(),
             ],
             vec![
+                Call::load_pos(),
                 Call::move_mario(),
             ]]
     }

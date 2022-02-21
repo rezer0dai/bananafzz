@@ -1,7 +1,7 @@
 use std::mem;
 use std::ops::RangeInclusive;
 use std::cmp::PartialOrd;
-use std::collections::HashMap;
+//use std::collections::HashMap;
 
 extern crate rand;
 use rand::Rng;
@@ -12,7 +12,7 @@ extern crate core;
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 
-use core::config::FZZCONFIG;
+//use core::config::FZZCONFIG;
 
 /// arg generator for bounded values - ranges ( 1..22, 0..1, 66..888, ..)
 pub struct Bounded<T> {
@@ -46,15 +46,15 @@ impl<T> Bounded<T>
 }
 
 impl<T: Copy + PartialOrd + SampleUniform + std::fmt::Debug> ISerializableArg for Bounded<T>
-{
-    fn load(&mut self, mem: &mut[u8], dump: &[u8], _data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
-        let size = mem.len();
-        let afl_data: &T = generic::data_const_unsafe::<T>(&dump[..size]);
-        *generic::data_mut_unsafe::<T>(mem) = *afl_data;
+{/*
+    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
+        let size = ISerializableArg::load(self, mem, dump, data, fd_lookup);
         if rand::thread_rng().gen_bool(1./FZZCONFIG.afl_fix_ratio) {
             return size
         }
 
+        let afl_data = *generic::data_const_unsafe::<T>(mem);
+        let afl_data = &afl_data;
         for bounds in self.bounds.iter() {
             if bounds.start() > afl_data || bounds.end() < afl_data {
                 continue
@@ -71,7 +71,7 @@ impl<T: Copy + PartialOrd + SampleUniform + std::fmt::Debug> ISerializableArg fo
             };
 
         size
-    }
+    }*/
 }
 
 impl<T: Copy + PartialOrd + SampleUniform + std::fmt::Debug> IArgLeaf for Bounded<T>

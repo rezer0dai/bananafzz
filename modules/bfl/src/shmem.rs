@@ -1,63 +1,42 @@
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-pub struct PocDataHeader {
-    pub magic: usize,
-    pub insert_ind: usize,
-    pub total_size: usize,
-    pub desc_size: usize,
-    pub calls_count: usize,
-}
+use info::PocDataHeader;
 
+#[derive(Clone)]
 pub struct ShmemData {
-    addr: usize,
-    data: Vec<u8>
+    data: *mut u8,
+    size: usize,
+
+    zero: [u8; std::mem::size_of::<PocDataHeader>()],
 }
 impl ShmemData {
-    pub fn new(magic: usize, tag: i32) -> ShmemData {
+    pub fn new_empty(magic: usize) -> ShmemData {
         unsafe {
-            let addr: usize = std::mem::transmute(
-                libc::shmat(tag, std::mem::transmute(0usize), 0)); if 0 == addr {
-                panic!("[BFL] shared invalid address")
-            }
-            let poc : &PocDataHeader = std::mem::transmute(addr);
-            if magic != poc.magic {
-                panic!("[BFL] shared invalid poc, magic does not match <{:X} vs {:X}>",
-                    magic, poc.magic)
-            }
-            let mut data = vec![0u8; poc.total_size];
-            generic::c_memload(addr, &mut data);
-
-            ShmemData {
-                addr : addr,
-                data : data,
-            }
+            let mut shmem = ShmemData {
+                data : std::mem::transmute(0usize),
+                size : std::mem::size_of::<PocDataHeader>(),
+                zero : [0u8; std::mem::size_of::<PocDataHeader>()],
+            };
+            shmem.data = std::mem::transmute(shmem.zero.as_ptr());
+            shmem.head().magic = magic;
+            shmem.head().total_size = shmem.size;
+            shmem
         }
     }
-    pub fn new_with_data(data: Vec<u8>, tag: i32) -> ShmemData {
-        unsafe {
-            let addr: usize = std::mem::transmute(
-                libc::shmat(tag, std::mem::transmute(0usize), 0));
-            if 0 == addr {
-                panic!("[BFL] shared invalid address")
-            }
-            ShmemData {
-                addr : addr,
-                data : data,
-            }
+    pub unsafe fn new(magic: usize, addr: usize) -> ShmemData {
+        let poc : &PocDataHeader = std::mem::transmute(addr);
+        if magic != poc.magic {
+            panic!("[BFL] shared invalid poc, magic does not match <{:X} vs {:X}>",
+                magic, poc.magic)
+        }
+        ShmemData {
+            data : std::mem::transmute(addr),
+            size: poc.total_size,
+            zero : [0u8; std::mem::size_of::<PocDataHeader>()],
         }
     }
-    pub fn data(&self) -> &[u8] { &self.data }
-
-    pub fn upload(&mut self, data: &[u8]) {
-        unsafe {
-            generic::c_memcpy(self.addr, data)
-        }
+    pub fn data<'a>(&self) -> &'a mut [u8] { 
+        unsafe { std::slice::from_raw_parts_mut(self.data, self.size) } 
     }
-}
-impl Drop for ShmemData {
-    fn drop(&mut self) {
-        unsafe {
-            libc::shmdt(std::mem::transmute(self.addr));
-        }
+    pub fn head<'a>(&self) -> &'a mut PocDataHeader { 
+        unsafe { std::mem::transmute(self.data) } 
     }
 }

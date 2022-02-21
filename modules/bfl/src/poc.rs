@@ -1,5 +1,9 @@
 use std::mem::size_of;
 
+pub use shmem::ShmemData;
+pub use info::{PocCallDescription, PocDataHeader};
+pub use info::PocCallHeader;
+
 pub enum ShmemId {
     PocIn = 1,
     PocOut = 2,
@@ -7,32 +11,8 @@ pub enum ShmemId {
     SpliceB = 4,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-pub struct BananizedFuzzyLoopConfig {
-    pub magic: usize,
-
-    shmem_pocin: i32,
-    shmem_pocout: i32,
-    shmem_splicea: i32,
-    shmem_spliceb: i32,
-
-    pub warmup_cnt: usize,
-    pub ctor_min_ratio: usize,
-    pub ctor_max_ratio: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-pub struct PocCallDescription {
-    pub offset: usize,
-    pub size: usize,
-    pub kin: usize,
-}
-
-pub use shmem::{ShmemData, PocDataHeader};
-
 pub struct PocData {
-    cfg: BananizedFuzzyLoopConfig,
+    magic: usize,
 
     shmem: ShmemData,
     info: PocDataHeader,
@@ -42,21 +22,34 @@ pub struct PocData {
     descs: Vec<PocCallDescription>,
 }
 impl PocData {
-    pub fn new(config: &BananizedFuzzyLoopConfig, shmem_id: ShmemId) -> PocData {
-        let shmem = PocData::load_shmem(config, shmem_id);
-        let info = *generic::data_const_unsafe::<PocDataHeader>(shmem.data());
+    pub fn new(magic: usize, addr: usize) -> PocData {
+        let shmem = if 0 != addr { 
+            unsafe { ShmemData::new(magic, addr)}
+        } else { ShmemData::new_empty(magic) };
+        let info = shmem.head().clone();
         let mut poc = PocData {
-            cfg: *config,
+            magic: magic,
 
-            shmem: shmem,
+            shmem: shmem.clone(),
             info: info,
-            inserted: 0 == info.insert_ind,//means we dont want to append/insert nothing, just repro
+            inserted: !0 == info.insert_ind,//means we dont want to append/insert nothing, just repro
 
             calls: vec![vec![]],
             descs: vec![],
         };
+//println!("[BFL] how is that {:?}", poc.calls.len());
         poc.parse_calls();
         poc.parse_descs();
+/*
+println!("==> INFO {:?}", poc.info);
+for i in 0..poc.info.calls_count {
+println!("??");
+    let desc = poc.desc_data(i);
+println!("? Call : {:?}", desc);
+    let head = generic::data_const_unsafe::<PocCallHeader>(&shmem.data()[desc.offset..]);
+println!("\n\t?> Header : {:?}", head);
+}
+*/
         poc
     }
 
@@ -64,40 +57,62 @@ impl PocData {
         self.push(self.calls.len(), call, kin)
     }
     pub fn push(&mut self, ind: usize, call: &[u8], kin: usize) {
-        assert!(self.info.calls_count == self.calls.len());
+//        assert!(self.info.calls_count == self.calls.len());
 
-        if self.inserted && self.info.calls_count != self.info.insert_ind { 
+        if self.inserted {// && ind != self.info.insert_ind { 
             return // we already inserted one as we are in INSERT MODE of AFL
         }
+//println!("PUSHED {:?}", ind);
 
-        self.calls.insert(ind, call.to_vec());
+//println!("[BFL] CALLS manual insert");
         self.descs.insert(ind, PocCallDescription {
-            offset : if 0 == ind { 0 } else { 
-                self.descs[ind-1].offset + self.descs[ind-1].size },
+            offset : match ind {
+                    0 => size_of::<PocDataHeader>(),
+                    pos if self.calls.len() == pos => self.info.total_size,
+                    _ => self.descs[ind].offset,
+                },
             size : call.len(),
             kin : kin,
         });
+        self.calls.insert(ind, call.to_vec());
 
+        for i in 0..self.descs.len() {
+            self.descs[i].offset += size_of::<PocCallDescription>();
+            if i < ind + 1 {
+                continue
+            }
+//println!("UPDATING : {i}/{ind}/{:?} :: {:?}", self.descs.len(), call.len());
+            self.descs[i].offset += call.len();
+        }
+
+if 0 == call.len() { panic!("[BFL] CALL LEN == 0") }
+
+        // total_size is not used for orig poc so we can update now
+        // + basically call.len() will be originally hard to query later on
         self.info.total_size += call.len() + size_of::<PocCallDescription>();
-        self.info.desc_size += size_of::<PocCallDescription>();
-        self.info.calls_count += 1;
+//        self.info.desc_size += size_of::<PocCallDescription>();
+//        self.info.calls_count += 1;
+//println!("[BFL] updated total size (A) : {:?}", self.info.total_size);
     }
-    pub fn discard(&mut self) {
-        self.info.magic = 0;
-        self.upload_poc();
-    }
-    fn upload_poc(&mut self) {
+    pub fn craft_poc(&mut self) -> Vec<u8> {
         let mut data = vec![];
 
 // by default we want mark all pocs from banana as repro-only, AFL choosing mode afterwards
-        self.info.insert_ind = 0; 
+        self.info.calls_count = self.calls.len();
+        if 0 == self.info.calls_count {
+            return vec![]
+        }
+        self.info.desc_size = self.calls.len() * size_of::<PocCallDescription>();
+        self.info.insert_ind = !0; 
 
         data.extend_from_slice(
             unsafe { generic::any_as_u8_slice(&self.info) });
         data.extend(
             self.descs
                 .iter()
-                .map(|desc| unsafe { generic::any_as_u8_slice(desc) } )
+                .map(|desc| unsafe { 
+if 0 == desc.size { panic!("[BFL] 0 call desc size") }
+                    generic::any_as_u8_slice(desc) } )
                 .flat_map(move |data| data.to_vec())
                 .collect::<Vec<u8>>());
         data.extend(
@@ -105,24 +120,36 @@ impl PocData {
                 .iter()
                 .flat_map(move |call| call.to_vec())
                 .collect::<Vec<u8>>());
+//        data.hash = hash(data[8..]);
+        data
+    }
 
-        self.shmem.upload(&data);
+    fn upload_poc(&mut self, addr: usize) {
+        if !0 == self.info.insert_ind {
+            return
+        }
+        let data = self.craft_poc();
+//println!("[BFL] updated total size (B) : {:?}  [{:?} : {:?}]", self.info.total_size, self.info.desc_size, self.info.calls_count);
+//println!("UPLOADING TO {:X}", addr);
+        unsafe { generic::c_memcpy(addr, &data) };
     }
 //write to shared memory - pocout
-    pub fn share(&mut self) -> bool {
+    pub fn share(&mut self, addr: usize) -> bool {
         let inserted = self.inserted;
 
         self.inserted = true;
         if !inserted && self.info.calls_count != self.info.insert_ind { 
+//println!("FAILED TO UPDATE {:?}", self.info.insert_ind);
             /***************/
             /* INSERT MODE */
             /***************/
-            return true// insert in between and continue until end of repro
+            return false// insert in between and continue until end of repro
         }
         
-        self.info.magic = self.cfg.magic;
-        self.upload_poc();
-        std::process::exit(0)
+        self.info.magic = self.magic;
+        self.upload_poc(addr);
+//        std::process::exit(0)
+        true
     }
     pub fn max_ind(&self) -> usize {
         if !self.inserted {
@@ -130,10 +157,6 @@ impl PocData {
         }
         self.info.calls_count
     }
-    pub fn broken_poc() {
-        std::process::exit(0)
-    }
-
     pub fn call(&self, ind: usize) -> &[u8] {
         &self.calls[ind]
     }
@@ -144,57 +167,35 @@ impl PocData {
         &self.info
     }
 
-    pub fn load(&self, ind: usize) -> &[u8] {
-        if 0 != self.calls.len() {
-            panic!("[BFL] internal Banana plugin fail - using PocData::load function after shmem.data is possibly detached from PocData.data")
-        }
-        let call = self.desc_data(ind);
-        &self.shmem.data()[
-            size_of::<PocDataHeader>() + 
-            self.info.desc_size + 
-            call.offset..
-        ][..call.size]
+    pub fn load(&mut self, ind: usize) -> &mut[u8] {
+        let call = self.desc_data(ind).clone();
+//println!("[BFL] call : {:?}:<{:?}:{:?}>", ind, call.offset, call.size);
+        &mut self.shmem.data()[call.offset..][..call.size]
     }
-    fn desc_data(&self, ind: usize) -> &PocCallDescription {
-        if 0 != self.descs.len() {
-            panic!("[BFL] internal Banana plugin fail - using PocData::desc_data function after shmem.data is possibly detached from PocData.data")
-        }
-        generic::data_const_unsafe(
-            &self.shmem.data()[
+    pub fn desc_data(&mut self, ind: usize) -> &mut PocCallDescription {
+        let desc = &mut self.shmem.data()[
                 size_of::<PocDataHeader>() + 
                 ind * size_of::<PocCallDescription>()..
-            ][..size_of::<PocCallDescription>()])
+            ][..size_of::<PocCallDescription>()];
+
+//println!("[BFL] id : {:X} => {:?} + {:?} || {:?} vs {:?}", ind, self.inserted, self.info.insert_ind, size_of::<PocCallDescription>(), desc.len());
+
+        generic::data_mut_unsafe(desc)
     }
 
-    fn load_shmem(config: &BananizedFuzzyLoopConfig, shmem_id: ShmemId) -> ShmemData {
-        match shmem_id {
-            ShmemId::PocOut => {
-                let data = vec![0u8; size_of::<PocDataHeader>()]; 
-                let mut poc = *generic::data_const_unsafe::<PocDataHeader>(&data);
-                poc.magic = config.magic;
-                poc.insert_ind = 0;//do repro only by default
-                poc.total_size = size_of::<PocDataHeader>();
-                ShmemData::new_with_data(data, config.shmem_pocout)
-            },
-            ShmemId::PocIn => {
-                ShmemData::new(config.magic, config.shmem_pocin)
-            },
-            ShmemId::SpliceA => {
-                ShmemData::new(config.magic, config.shmem_splicea)
-            },
-            ShmemId::SpliceB => {
-                ShmemData::new(config.magic, config.shmem_spliceb)
-            },
-        }
-    }
     fn parse_calls(&mut self) {
+//println!("[BFL] CALLS parse {:?}", self.calls.len());
         self.calls = (0..self.info.calls_count)
             .map(|ind| self.load(ind).to_vec())
             .collect::<Vec<Vec<u8>>>();
+//println!("[BFL] CALLS parsed");
     }
     fn parse_descs(&mut self) {
         self.descs = (0..self.info.calls_count)
-            .map(|ind| *self.desc_data(ind))
+            .map(|ind| {
+//println!("[BFL] desc {:?} => {:?}", ind, self.desc_data(ind).size);
+                *self.desc_data(ind)
+            })
             .collect::<Vec<PocCallDescription>>();
     }
 }

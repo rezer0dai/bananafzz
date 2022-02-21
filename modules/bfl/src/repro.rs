@@ -3,29 +3,19 @@ use std::mem::size_of;
 use core::exec::call::Call;
 use core::exec::fd_info::Fd;
 
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-pub struct PocHeader {
-    pub len: usize,
-    pub cid: u64,
-    pub uid: u64,
-    pub fid_size: usize,
-    pub mem_size: usize,
-    pub dmp_size: usize,
-}
+pub use info::PocCallHeader;
 
 pub struct PocCall {
-    pub info: PocHeader,
+    pub info: PocCallHeader,
     pub fid: Vec<u8>,
     pub mem: Vec<u8>,
     pub dmp: Vec<u8>,
 }
 impl PocCall {
     pub fn new(data: &[u8]) -> PocCall {
-        let info = *generic::data_const_unsafe::<PocHeader>(
-            &data[..size_of::<PocHeader>()]);
+        let info = *generic::data_const_unsafe::<PocCallHeader>(&data);
 
-        let mut off = size_of::<PocHeader>();
+        let mut off = size_of::<PocCallHeader>();
         let fid = data[off..][..info.fid_size].to_vec();
         off += info.fid_size;
         let mem = data[off..][..info.mem_size].to_vec();
@@ -45,21 +35,27 @@ impl PocCall {
         }
     }
     pub fn dump_call(call: &Call, fd: &Fd, uid: u64) -> Vec<u8> {
-        let mut call_data = vec![];
+        let mut call_data = vec![0u8; size_of::<PocCallHeader>()];
         let mem = call.dump_mem();
         let dmp = call.dump_args();
-        let total_len = size_of::<PocHeader>() + fd.data().len() + mem.len() + dmp.len(); 
+
         unsafe {
-            call_data.extend(generic::any_as_u8_slice(&total_len));
-            call_data.extend(generic::any_as_u8_slice(&call.id()));
-            call_data.extend(generic::any_as_u8_slice(&uid));
-            call_data.extend(generic::any_as_u8_slice(&fd.data().len()));
-            call_data.extend(generic::any_as_u8_slice(&mem.len()));
-            call_data.extend(generic::any_as_u8_slice(&dmp.len()));
+            let mut head = generic::data_mut_unsafe::<PocCallHeader>(&mut call_data);
+            head.cid = call.id().into();
+            head.uid = uid;
+            head.fid_size = fd.data().len();
+            head.mem_size = mem.len();
+            head.dmp_size = dmp.len();
         }
         call_data.extend(fd.data());
         call_data.extend(mem);
         call_data.extend(dmp);
+
+        let total_size = call_data.len();
+        unsafe {
+            let mut head = generic::data_mut_unsafe::<PocCallHeader>(&mut call_data);
+            head.len = total_size;
+        }
         call_data
     }
 }

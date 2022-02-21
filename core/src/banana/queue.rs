@@ -68,6 +68,12 @@ impl FuzzyQ {
             .iter()
             .all(|obs| obs.notify(info, call))
     }
+    pub fn call_aftermath_safe<'a>(&self, call: &'a mut Call) {
+        let info = &self.states[&thread::current().id()];
+        for obs in self.observers_call.iter() { 
+            obs.aftermath(info, call) 
+        }
+    }
     /// state destruction callback
     pub fn dtor_notify_safe(&self) {
         let info = &self.states[&thread::current().id()];
@@ -134,5 +140,8 @@ impl FuzzyQ {
         if let Some(info) = self.states.get_mut(&thread::current().id()) {
             *info = fuzzy_info;
         }
+    }
+    pub fn empty(&self) -> bool {
+        0 == self.states.len()
     }
 }

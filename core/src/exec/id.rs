@@ -80,3 +80,11 @@ impl BitAnd for CallTableId {
         }
     }
 }
+
+impl From<CallTableId> for u64 {
+    fn from(id: CallTableId) -> u64 {
+        match id {
+            CallTableId::Id(id) => unsafe{ std::mem::transmute(id) },
+        }
+    }
+}

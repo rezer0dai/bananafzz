@@ -17,13 +17,8 @@ use common::table::*;
 
 use args::smb2::POS_SIZE;
 
-type TLoadPos = unsafe extern "system" fn(
-    fd: u32,
-    pos: &mut u8,
-    ) -> bool;
-//lazy_static! {
-//    static ref LOAD_POS: TLoadPos = unsafe{ std::mem::transmute::<_, TLoadPos>(generic::load_api("./smbc", "load_pos")) };
-//}
+extern "C" { fn load_pos(fd: i32, pos: *mut u8); }
+//fn load_pos(fd: i32, pos: *mut u8) { print!("l"); }
 
 pub trait LoadPos {
 	fn load_pos() -> Call;
@@ -47,16 +42,16 @@ impl LoadPos for Call {
 
 			], |args| {
         
-                if let [fd, position] = &mut args[..] {
-println!("ARGS:{:X} :: {:?}", *fd.data_const_unsafe::<u32>(), position.data());
-for b in position.data_mut().iter_mut() { *b += 1 }
-/*
-                    let succ = unsafe { LOAD_POS(
+                if let [fd, pos] = &mut args[..] {
+//println!("ARGS:{:X} :: {:?}", *fd.data_const_unsafe::<u32>(), pos.data());
+//for b in pos.data_mut().iter_mut() { *b += 1 }
+
+                    unsafe { load_pos(
                         *fd.data_const_unsafe(),
-                        position.data_mut_unsafe(),
+                        pos.data_mut_unsafe(),
                         ) };
-                    CallInfo::new(succ, &[])
-*/CallInfo::succ(0)//0==kin as this will be not afl-ed anyway
+                    let pos = *generic::data_const_unsafe::<u32>(&pos.data());
+                    return CallInfo::succ(pos as usize)//kin is X coordinate, for crossovers
                 } else {
                     panic!("NOT ENOUGH PARAMS TO LOAD FROM : LoadPos")
                 }

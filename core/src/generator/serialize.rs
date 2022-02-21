@@ -37,15 +37,29 @@ pub trait ISerializableArg {
 
     // dump is easy as even in ptr in argument we just fold those data
     fn dump(&self, mem: &[u8]) -> Vec<u8> {
-        mem.to_vec()
+        if 0 == mem.len() {
+            return vec![]
+        }
+
+        let mut sz_data = unsafe { 
+            generic::any_as_u8_slice(&mem.len()).to_vec() };
+        assert!(sz_data.len() == std::mem::size_of::<usize>());
+        sz_data.extend(mem);
+        sz_data
     }
     // here we push trough composite.rs open-ended mem + data slices, cuze ptr logic
     // we could forward exact memory slice, but we can not easily forward closed data slice
     // because of argument can contains ptr
     // content of data behind ptr is dumped into data slice and ptr leaf should extract
     // thats why we return how much data we used from data slice!
-    fn load(&mut self, mem: &mut[u8], dump: &[u8], _data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
-        mem.copy_from_slice(&dump[..mem.len()]);
-        mem.len()
+    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
+        let size_size = std::mem::size_of::<usize>();
+
+        let size: usize = *generic::data_const_unsafe(dump);
+        assert!(size == mem.len(), "[BFL] loading dumped data to arg goes wrong [{:X} != {:X}] aka {:X}", size, mem.len() + size_size, dump.len());
+        assert!(mem.len() == data.len());
+
+        mem.copy_from_slice(&dump[size_size..][..data.len()]);
+        mem.len() + size_size
     }
 }

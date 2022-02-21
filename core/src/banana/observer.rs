@@ -24,6 +24,7 @@ pub trait ICallObserver {
 ///         can solve it - manage signals, and sync at this level
 ///     - ...
     fn notify(&self, info: &StateInfo, call: &mut Call) -> bool;
+    fn aftermath(&self, _info: &StateInfo, _call: &mut Call) { }
 }
 /// (pre) callback per state creation
 ///
@@ -35,6 +36,5 @@ pub trait IStateObserver {
     /// - however creation call already invoked on it, and delete call will be executed as well
     fn notify_ctor(&self, info: &StateInfo) -> bool;
     /// just to notify you, that fuzzing for this state is over
-    fn notify_dtor(&self, info: &StateInfo);
+    fn notify_dtor(&self, _info: &StateInfo) { }
 }
-

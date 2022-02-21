@@ -9,13 +9,14 @@ use std::{
     sync::RwLock,
 };
 
-mod shmem;
-mod poc;
-mod repro;
+pub mod shmem;
+pub mod poc;
+pub mod repro;
 mod bfl;
 use bfl::BananizedFuzzyLoop;
-pub use bfl::BananizedFuzzyLoopConfig;
-mod splice;
+pub mod info;
+pub use info::BananizedFuzzyLoopConfig;
+pub mod crossover;
 
 extern crate generic;
 
@@ -42,6 +43,12 @@ impl ICallObserver for BflProxy {
             Err(_) => panic!("[BFL] lock failed - CALLS")
         }
     }
+    fn aftermath(&self, state: &StateInfo, call: &mut Call) {
+        match self.lookup.write() {
+            Ok(mut bfl) => bfl.aftermath_locked(state, call),
+            Err(_) => panic!("[BFL] lock failed - CALLS")
+        }
+    }
 }
 impl IStateObserver for BflProxy {
     fn notify_ctor(&self, state: &StateInfo) -> bool {
@@ -50,7 +57,6 @@ impl IStateObserver for BflProxy {
             Err(_) => panic!("[BFL] lock failed - CTORS")
         }
     }
-    fn notify_dtor(&self, _: &StateInfo) {}
 }
 
 pub fn observers(
@@ -64,7 +70,7 @@ pub fn observers(
             let lookup = Rc::new(RwLock::new(BananizedFuzzyLoop::new(cfg)));
             (
                 Some(Box::new(BflProxy::new(Rc::clone(&lookup)))),
-                Some(Box::new(BflProxy::new(Rc::clone(&lookup))))
+                Some(Box::new(BflProxy::new(Rc::clone(&lookup)))),
             )
         }
         _ => (None, None),

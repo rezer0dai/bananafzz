@@ -16,7 +16,8 @@ impl Fd {
     }
 
     pub fn empty() -> Fd {
-        Fd { data : Vec::new() }
+//        Fd { data : Vec::new() }
+        Fd { data : vec![0x00u8; 4] }
     }
     pub fn dummy(size: usize) -> Fd {
         Fd { data : vec![0x00u8; size] }

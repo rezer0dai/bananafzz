@@ -1,7 +1,7 @@
 use std::mem;
 use std::ops::BitAnd;
 use std::ops::BitOr;
-use std::collections::HashMap;
+//use std::collections::HashMap;
 
 extern crate rand;
 use rand::Rng;
@@ -11,7 +11,7 @@ extern crate core;
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 
-use core::config::FZZCONFIG;
+//use core::config::FZZCONFIG;
 
 extern crate generic;
 
@@ -35,19 +35,18 @@ impl<T> Flag<T> {
 impl<T: Copy + BitAnd + BitOr> ISerializableArg for Flag<T>
     where T: From< <T as BitAnd>::Output >,
           T: From< <T as BitOr>::Output >
-{
-    fn load(&mut self, mem: &mut[u8], dump: &[u8], _data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
-        let size = mem.len();
-        let afl_data: &T = generic::data_const_unsafe::<T>(&dump[..size]);
-        *generic::data_mut_unsafe::<T>(mem) = *afl_data;
+{/*
+    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
+        let size = ISerializableArg::load(self, mem, dump, data, fd_lookup);
         if rand::thread_rng().gen_bool(1./FZZCONFIG.afl_fix_ratio) {
             return size
         }
+        let afl_data = *generic::data_mut_unsafe::<T>(mem);
         *generic::data_mut_unsafe::<T>(mem) = T::from(
             self.always | T::from(
-                *afl_data & self.flag));
+                afl_data & self.flag));
         size
-    }
+    }*/
 }
 
 impl<T: Copy + BitAnd + BitOr> IArgLeaf for Flag<T>

@@ -43,23 +43,23 @@ extern crate libbfl;
 use libbfl::BananizedFuzzyLoopConfig;
 
 #[derive(Debug, Deserialize, Serialize)]
-struct ConfigCore {
+pub struct ConfigCore {
     filter: Option<FilterConfig>,
     raceunlock: Option<RaceUnlockConfig>,
     sleeper: Option<SleeperConfig>,
     limiter: Option<LimiterConfig>,
     debug: Option<DebugConfig>,
     mediator: Option<MediatorConfig>,
-    bfl: Option<BananizedFuzzyLoopConfig>,
+    pub bfl: Option<BananizedFuzzyLoopConfig>,//lets share only what we know we need
 }
 #[derive(Debug, Deserialize, Serialize)]
-struct Config {
-    online: Vec<String>,
-    core: ConfigCore,
+pub struct Config {
+    pub online: Vec<String>,
+    pub core: ConfigCore,
 }
 
 //will panic if no correct crafted config!
-fn load_cfg() -> Result<Config, io::Error> {
+pub fn load_cfg() -> Result<Config, io::Error> {
     match generic::read_file("modules.toml") {
         Ok(data) => Ok(toml::from_str(&data).unwrap()),
         Err(_) => match generic::read_file(
@@ -93,21 +93,22 @@ impl Observer {
     }
     pub fn stats(&self) {
         println!(
-            "pluging {} => state={} , call={}",
+            "pluging {} => state={}, call={}",
             self.name,
             self.obs.0.is_some(),
-            self.obs.1.is_some()
+            self.obs.1.is_some(),
         );
     }
 }
 
 /// control structure for installing plugins
-struct Plugins {
-    observers: Vec<Observer>,
+pub struct Plugins {
+    pub observers: Vec<Observer>,
+    pub cfg: Config,
 }
 
 impl Plugins {
-    fn new<F>(cfg: Config, push_state: &'static F) -> Plugins
+    pub fn new<F>(cfg: Config, push_state: &'static F) -> Plugins
     where
         F: Fn(StateTableId, &Fd) + std::marker::Sync + std::marker::Send,
     {
@@ -117,6 +118,7 @@ impl Plugins {
                 .iter()
                 .map(|module| Plugins::load_observer(module, &cfg.core, push_state))
                 .collect(),
+            cfg: cfg,
         }
     }
     /// anytime new plugin is added must be inserted loading-code here
@@ -170,12 +172,12 @@ impl Plugins {
     }
 }
 
-pub fn plug<F>(push_state: &'static F) -> Result<Vec<Observer>, io::Error>
+pub fn plug<F>(push_state: &'static F) -> Result<Plugins, io::Error>
 where
     F: Fn(StateTableId, &Fd) + std::marker::Sync + std::marker::Send,
 {
     match load_cfg() {
-        Ok(cfg) => Ok(Plugins::new(cfg, push_state).observers),
+        Ok(cfg) => Ok(Plugins::new(cfg, push_state)),
         Err(e) => return Err(e),
     }
 }
