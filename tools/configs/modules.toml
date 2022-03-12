@@ -1,0 +1,47 @@
+online = ["libbfl", "liblimiter"]#, "libdebug"]#"libfilter"]"libraceunlock",  "libpoclog","liblimiter", 
+
+[core.bfl]
+magic = 66
+shmem = 0
+pocmem = 0
+warmup_cnt = 0
+ctor_min_ratio = 0
+ctor_max_ratio = 0
+
+[core.debug]
+noisy = true#false#
+ctors_included = true#false#
+mask = 65535#
+only_successfull = false#true#
+
+[core.poclog]
+addr = 8589934592
+size = 104857600
+flush2file = true
+fname = "bpoc"
+printout = false#true
+
+[core.raceunlock]
+sleep = 33
+racer_count = 6
+
+[core.overpoc]
+size_of_log = 200
+
+[core.limiter]
+num_of_calls = 2000
+
+[core.grayfuzz]
+path = "./"
+extension = ""
+cc_module = ["libcorpus"]
+lib_count = 15
+entry_point = "do_poc"
+oscilate_count = 6
+after_fuzz_count = 10
+racer_count = 3
+wait_ms = 100
+skip_ctors = true
+
+[core.filter.whitelist]
+ctors = 0
