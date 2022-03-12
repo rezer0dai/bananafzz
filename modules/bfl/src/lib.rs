@@ -14,6 +14,7 @@ pub mod poc;
 pub mod repro;
 mod bfl;
 use bfl::BananizedFuzzyLoop;
+pub use bfl::KNOWLEDGE_MAP;
 pub mod info;
 pub use info::BananizedFuzzyLoopConfig;
 pub mod crossover;

@@ -4,16 +4,14 @@ extern crate core;
 use self::core::state::id::StateTableId;
 use self::core::exec::id::CallTableId;
 
-pub const FD_SIZE: usize = 4;
-
 #[allow(dead_code)]
 #[repr(u64)]
 pub enum StateIds {
-    FdGeneric = 0x1F0,
+    FdGeneric = 0x1FF0,
     FdMario = 0x100,
-    FdEnemy = 0x10,
-    FdShroom = 0x20,
-    FdQBox = 0x40,
+    FdShroom = 0x200,
+    FdEnemy = 0x400,
+    FdCoins = 0x800,
 }
 
 impl From<StateTableId> for StateIds {
@@ -35,16 +33,20 @@ impl Into<StateTableId> for StateIds {
 /// apply, gathered knowledge from before - genes / code-cov info, to you current fuzzing
 #[allow(non_camel_case_types, dead_code)]
 #[repr(u64)]
+#[derive(PartialEq)]
 pub enum CallIds {
     dummy = 0,
     dup,
 
-    close = 0x100,
+    close = 2,
 
-    mario = 0x1000,
+    mario = 0x10,
     move_mario,
     load_pos,
     game_over,
+
+    eval_pos,
+    is_active,
 }
 impl From<CallTableId> for CallIds {
     fn from(id: CallTableId) -> CallIds {

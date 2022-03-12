@@ -22,6 +22,7 @@ pub struct Call {
     einfo: CallInfo,
     /// number of total invoked calls in current thread(fuzzy_obj)
     total: usize,
+    allowed: usize,
     /// number of successfull calls executed so far for current thread(state/fuzzyobj)
     success: usize,
     /// defined arguments for this call : holders <- generators
@@ -90,6 +91,7 @@ impl Call {
             name : name,
             einfo : CallInfo::fail(0),//0 should be undefined kin!
             total : 0,
+            allowed : 0,
             success : 0,
             args : args,
             ccall : ccall,
@@ -105,7 +107,6 @@ impl Call {
     /// 5. store results
     pub fn do_call(&mut self, fd: &[u8], shared: &mut[u8]) -> bool {
         self.total += 1;
-
         for arg in self.args.iter_mut() {
             arg.do_generate(fd, shared);
         }
@@ -157,12 +158,13 @@ impl Call {
 ///     - therefore do_call_safe wrapper there..
     fn do_call_impl(&mut self) -> bool {
         if !bananaq::call_notify(self) {
+//panic!("OBSERVER BLOCKING");
             return false
         }
+        //we want total here, otherwise calling call.dead() will be effectivelly the same as config.n_failed_notify_allowed
+        self.allowed += 1;
 
         self.einfo = (self.ccall)(&mut self.args);
-
-        bananaq::call_aftermath(self);
         true
     }
 /// do sync in case of single thread config flag set
@@ -209,9 +211,10 @@ impl Call {
     pub fn name(&self) -> &str { self.name }
     pub fn id(&self) -> CallTableId { self.id.clone() }
     pub fn total(&self) -> usize { self.total }
+    pub fn allowed(&self) -> usize { self.allowed }
     pub fn success(&self) -> usize { self.success }
     pub fn ok(&self) -> bool { self.einfo.success() }
-    pub fn dead(&self) -> bool { self.total > FZZCONFIG.dead_call * (1 + self.success) }//from config!!
+    pub fn dead(&self) -> bool { FZZCONFIG.dead_call > (1 + self.success) as f64 / (1 + self.allowed) as f64 }//from config!!
     pub fn einfo(&self) -> &[u8] { &self.einfo.extra_info() }
     pub fn kin(&self) -> usize { self.einfo.kin() }
 

@@ -1,0 +1,18 @@
+[package]
+name = "smb"
+version = "0.1.0"
+authors = ["re:Zer0dAI <tutti@frutti.com>"]
+
+[lib]
+name = "libsmb"
+path = "src/lib.rs"
+doc = false
+
+[dependencies]
+core = { path = "../../core" }
+generic = { path = "../../generic" }
+common = { path = "../common" }
+serde = "1.0.131"
+serde_derive = "1.0.131"
+libc = "0.2.109"
+lazy_static = "1.4.0"

@@ -20,3 +20,4 @@ core = { path = "../core" }
 api = { path = "../api" }
 plugs = { path = "../modules/plugs" }
 bfl = { path = "../modules/bfl" }
+smb = { path = "../modules/smb" }

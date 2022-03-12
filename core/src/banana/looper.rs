@@ -34,7 +34,6 @@ impl FuzzyState {
                 return
             }
             let racer = 0 != istate.state().level();
-
             let mut fuzzy_state = FuzzyState::new(istate);
             if !fuzzy_state.init() {
                 return
@@ -50,10 +49,7 @@ impl FuzzyState {
                     rand::thread_rng().gen_range(0..=FZZCONFIG.after_creation_sleep)));
             }
 
-            for i in 0u16.. {//ok we want panic if we overdo it, as 0xFFFF is not reasonable fuzzing for any object ..
-                if 0 == (i % FZZCONFIG.state_update_freq) {
-                    bananaq::update(&fuzzy_state.istate);
-                }
+            for _ in 0u16.. {//ok we want panic if we overdo it, as 0xFFFF is not reasonable fuzzing for any object ..
                 if !fuzzy_state.istate.fuzzy_loop() {
                     break
                 }

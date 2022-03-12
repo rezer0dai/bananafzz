@@ -11,7 +11,8 @@ use super::serialize::{
 ///
 /// - mostly any custom argument declared for syscall should implement this!
 ///     - creating own leafs should be discouraged, however may be sometimes needed
-pub struct ArgComposite {
+pub struct ArgComposite
+{
     /// size of argument described;
     ///
     /// - not necessary all memory of composite is described by leafs ( unitialized - pattern by default)
@@ -24,6 +25,8 @@ pub struct ArgComposite {
     /// - complex structure passing to call is composed of small primitive types
     /// - composite groups them together and generate per demand
     args: Vec<(usize, Box<dyn IArgLeaf>)>,
+
+    logicer: Option<Box<dyn IArgLeaf>>,
 }
 
 //O(n**2) algo, but it is ok as N is very small and we do it only once ...
@@ -89,6 +92,25 @@ impl ArgComposite {
             size : size,
             name : name,
             args : args,
+            logicer : None,
+        }
+    }
+    pub fn new_w_logic(
+        size: usize,
+        name: &'static str,
+        args: Vec<(usize, Box<dyn IArgLeaf>)>,
+        logicer: Box<dyn IArgLeaf>,
+        ) -> ArgComposite
+    {
+        if sanitize_overlaping(&args, size) {
+            panic!("overlap in {}", name)
+        }
+
+        ArgComposite {
+            size : size,
+            name : name,
+            args : args,
+            logicer : Some(logicer),
         }
     }
 }
@@ -111,6 +133,10 @@ impl IArgLeaf for ArgComposite {
             let size = arg.size();
             arg.generate(&mut mem[off..off+size], fd, shared)
         }
+
+        if let Some(ref mut logicer) = &mut self.logicer {
+            logicer.generate_unsafe(mem, fd, shared)
+        }//we could use function instead of IArgLeaf, but likely we want to the same with "load" in the future
     }
     fn save_shared(&mut self, mem: &[u8], shared: &mut[u8]) { 
         for i in 0..self.args.len() {
@@ -187,6 +213,9 @@ impl ISerializableArg for ArgComposite {
 
             off_d += size;
         }
+//        if let Some(ref mut logicer) = &mut self.logicer {
+//            logicer.load(mem, dump, data, fd_lookup);
+//        }
         off_d
     }
 }

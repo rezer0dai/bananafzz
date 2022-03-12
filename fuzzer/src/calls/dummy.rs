@@ -7,10 +7,19 @@ use common::table::CallIds;
 extern crate api;
 
 pub trait DummyExec {
-	fn dummy() -> Call;
+	fn succ() -> Call;
+	fn fail() -> Call;
 }
 impl DummyExec for Call {
-	fn dummy() -> Call {
+	fn succ() -> Call {
+		Call::new(
+			CallIds::dummy.into(),
+			"dummy",
+			vec![
+			],
+			|_| { CallInfo::succ(0) })
+	}
+	fn fail() -> Call {
 		Call::new(
 			CallIds::dummy.into(),
 			"dummy",

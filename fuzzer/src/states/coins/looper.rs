@@ -7,7 +7,7 @@ use self::core::exec::fd_info::Fd;
 
 use super::state::*;
 
-impl IFuzzyObj for MarioState {
+impl IFuzzyObj for CoinsState {
     fn fuzzy_loop(&mut self) -> bool {
         if !self.state.do_fuzz_one(&mut self.shared) {
             return false
@@ -38,5 +38,5 @@ impl IFuzzyObj for MarioState {
     }
 }
 
-unsafe impl Send for MarioState {}
-unsafe impl Sync for MarioState {}
+unsafe impl Send for CoinsState {}
+unsafe impl Sync for CoinsState {}

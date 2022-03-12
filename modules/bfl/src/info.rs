@@ -38,6 +38,8 @@ pub struct PocCallHeader {
     pub len: usize,
     pub cid: u64,
     pub uid: u64,
+    pub sid: u64,
+    pub level: usize,
     pub fid_size: usize,
     pub mem_size: usize,
     pub dmp_size: usize,
@@ -48,6 +50,8 @@ pub struct PocCallHeader {
 pub struct PocDataHeader {
     pub magic: usize,
     pub insert_ind: usize,
+    pub split_at: usize,
+    pub split_cnt: usize,
     pub total_size: usize,
     pub desc_size: usize,
     pub calls_count: usize,

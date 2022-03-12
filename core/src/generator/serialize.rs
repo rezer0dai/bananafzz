@@ -52,7 +52,7 @@ pub trait ISerializableArg {
     // because of argument can contains ptr
     // content of data behind ptr is dumped into data slice and ptr leaf should extract
     // thats why we return how much data we used from data slice!
-    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
+    fn default_load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8]) -> usize {
         let size_size = std::mem::size_of::<usize>();
 
         let size: usize = *generic::data_const_unsafe(dump);
@@ -61,5 +61,8 @@ pub trait ISerializableArg {
 
         mem.copy_from_slice(&dump[size_size..][..data.len()]);
         mem.len() + size_size
+    }
+    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
+        self.default_load(mem, dump, data)
     }
 }

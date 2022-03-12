@@ -19,8 +19,6 @@ use core::banana::looper::FuzzyState;
 mod common;
 //use common::table::*;
 
-mod args;
-
 mod calls;
 
 mod states;
@@ -28,6 +26,9 @@ use states::mario::state::MarioState;
 
 extern crate libbfl;
 use libbfl::info::PocDataHeader;
+use libbfl::poc::REPROED;
+
+extern crate libsmb;
 
 pub fn push_state(_id: StateTableId, _fd: &Fd) {
 /*
@@ -59,11 +60,19 @@ fn load_plugins(mut plugins: Vec<Observer>) {
         }
         //store here reloaders!!
     }
+    bananaq::attach_call_observer(libsmb::observer())
 }
 pub fn LLVMFuzzerTestOneInput_mut(data: *mut u8, size: usize) -> i32 {
-//println!("PUSH");
     FuzzyState::fuzz(Box::new(MarioState::spawn())).join();
-//println!("DONE");
+    return 1;
+println!("PUSH");
+    for i in 0..5 {
+        FuzzyState::fuzz(Box::new(MarioState::enemy(i)));
+    }
+    let t1 = FuzzyState::fuzz(Box::new(MarioState::shroom()));
+    FuzzyState::fuzz(Box::new(MarioState::spawn())).join();
+    t1.join();
+println!("DONE");
     1
 }
 
@@ -90,9 +99,11 @@ pub unsafe fn LLVMFuzzerTestOneInput(poc_mem: *mut u8, data: *const u8, size: us
 
     let res = LLVMFuzzerTestOneInput_mut(std::mem::transmute(data), size);
 
+    while !bananaq::empty() { }
+
     bananaq::detach_observers();
 
-    while !bananaq::empty() { }
+    println!("QUEUE FINISHED");
 
     res
 }
@@ -107,23 +118,28 @@ pub fn main() {
 
     let mut poc = [0u8; 0x10000];
     generic::data_mut_unsafe::<PocDataHeader>(&mut poc).total_size = std::mem::size_of::<PocDataHeader>();
+    generic::data_mut_unsafe::<PocDataHeader>(&mut poc).split_at = !0;
 // create dummy pocjust header
 
-    for i in 0..400 {
+    loop {
 // LOAD CRASH
 /*
         //f887ea2517424f2f
-        if let Ok(data) = generic::read_file_raw("out/3e500a00d08eccbe") {//3e500a00d08eccbe//42ce44f0e0a28214") {
+        if let Ok(data) = generic::read_file_raw("crashes/af3b6da73414de1e") {//3e500a00d08eccbe//42ce44f0e0a28214") {
             poc[..data.len()].clone_from_slice(&data);
         } else { panic!("NOP NO CRASH FILE LOCATED") }
 */
 
         let cc = generic::data_const_unsafe::<PocDataHeader>(&poc).calls_count;
         generic::data_mut_unsafe::<PocDataHeader>(&mut poc).magic = 66;
-        let ii = if cc > 1 { 1 } else {cc};//rand::thread_rng().gen_range(0..=cc);
+//        let ii = if cc > 1 { 1 } else {cc};//rand::thread_rng().gen_range(0..=cc);
+        let ii = if cc > 0 { rand::thread_rng().gen_range(0..=cc) } else {cc};
         generic::data_mut_unsafe::<PocDataHeader>(&mut poc).insert_ind = ii;
 
         let total_size = generic::data_const_unsafe::<PocDataHeader>(&poc).total_size;
+        if 1000 + total_size > poc.len() {
+            break
+        }
 /*
         println!("NOW SIZE IS : {total_size} -> {:?}/{i}=>{:?}",
             generic::data_const_unsafe::<PocDataHeader>(&poc).insert_ind,
@@ -131,29 +147,81 @@ pub fn main() {
             );
 */
         let data = poc[..total_size].to_vec();
-        if i > 0 {
-            generic::write_file_raw(format!("./bfl_in/{:X}", cc).as_str(), &data);
-        }
 //copy from poc to data
+//println!("INSERTING");
+//
+unsafe { REPROED = false; }
+
         unsafe {
             LLVMFuzzerTestOneInput(std::mem::transmute(poc.as_ptr()), std::mem::transmute(data.as_ptr()), data.len());
         }
+
         if total_size != generic::data_mut_unsafe::<PocDataHeader>(&mut poc).total_size {
-            if ii != cc { println!("****************>>> INSERTED {ii}/{cc}"); }
+            if 0 != ii && cc != ii { println!("****************>>> INSERTED {ii}/{cc}"); }
         }
-        if i > 0 {
-            if let Ok(data) = generic::read_file_raw(format!("./bfl_in/{:X}", cc).as_str()) {
-                poc[..data.len()].clone_from_slice(&data);
-            } else { panic!("NOP NO CRASH FILE LOCATED") }
+
+        let total_size = generic::data_const_unsafe::<PocDataHeader>(&poc).total_size;
+        let data = poc[..total_size].to_vec();
+
+//        assert!(!0 == generic::data_const_unsafe::<PocDataHeader>(&poc).insert_ind);
+        if !0 != generic::data_const_unsafe::<PocDataHeader>(&poc).insert_ind {
+            continue//like we run out of ctors.. and we did try to add one more at the begining
         }
+println!("CLEANING -> {:?} |", generic::data_const_unsafe::<PocDataHeader>(&poc).calls_count);
         unsafe {
             LLVMFuzzerTestOneInput(std::mem::transmute(poc.as_ptr()), std::mem::transmute(data.as_ptr()), data.len());
         }
-    }
+
+    let reproed = unsafe { REPROED };
+if !reproed { generic::append_file_raw("banana.txt", b"$"); }
+else { generic::append_file_raw("banana.txt", b"@"); }
+assert!(reproed);
+
+        assert!(total_size == generic::data_mut_unsafe::<PocDataHeader>(&mut poc).total_size);
+        let data = poc[..total_size].to_vec();
+        generic::write_file_raw(format!("./bfl_in/{:X}", cc).as_str(), &data);
+
+        assert!(!0 == generic::data_const_unsafe::<PocDataHeader>(&poc).insert_ind);
+println!("TESTING");
+        unsafe {
+            LLVMFuzzerTestOneInput(std::mem::transmute(poc.as_ptr()), std::mem::transmute(data.as_ptr()), data.len());
 
 unsafe { println!("***** FINAL SIZE IS : {:?} -> {:?}",
     generic::data_const_unsafe::<PocDataHeader>(&poc).total_size,
     generic::data_const_unsafe::<PocDataHeader>(&poc).calls_count,
     ) }
 
+        }
+
+    }
+
+}
+/*
+        if i > 0 {
+            if let Ok(data) = generic::read_file_raw(format!("./bfl_in/{:X}", cc).as_str()) {
+                poc[..data.len()].clone_from_slice(&data);
+            } else { panic!("NOP NO CRASH FILE LOCATED") }
+        }
+        assert!(!0 == generic::data_const_unsafe::<PocDataHeader>(&poc).insert_ind);
+        let data = poc[..total_size].to_vec();
+*/
+
+mod args;
+use args::smb2::Move;
+
+#[no_mangle] 
+unsafe fn load_pos(pos: *mut u8) { 
+    std::slice::from_raw_parts_mut(pos, 25)[Move::Mario as usize - 1] = 1;
+    std::slice::from_raw_parts_mut(pos, 27 - 1)
+        .fill(8);
+    print!("l") 
+}
+#[no_mangle]
+unsafe fn do_move(action: *const u8, _size: usize, pos: *mut u8) { 
+    let mut x = std::slice::from_raw_parts_mut(pos, 4);
+    *generic::data_mut_unsafe::<u32>(&mut x) += *action as u32;
+    std::slice::from_raw_parts_mut(pos, 26)[Move::Mario as usize - 1] = 1;
+    std::slice::from_raw_parts_mut(pos, 27 - 1)
+        .fill(8);
+    print!("m") 
 }

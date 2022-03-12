@@ -1,10 +1,11 @@
 //#![feature(llvm_asm, asm, unboxed_closures)]
-#![feature(unboxed_closures)]
+#![feature(unboxed_closures, backtrace)]
 
 pub mod native_alloc;
 
 use std::{
 	io,
+    fs,
 	mem,
 	ops,
 	thread,
@@ -45,6 +46,25 @@ pub fn append_file_raw(fname: &str, data: &[u8]) -> Result<String, io::Error> {
     Ok(String::from(fname))
 }
 
+pub fn append_file_raw_with_limit(
+    fname: &str, 
+    data: &[u8], 
+    limit: usize
+    ) -> Result<String, io::Error> 
+{
+    let size = fs::metadata(fname)?.len() as usize;
+    if size > limit {
+        let data = read_file_raw(fname)?;
+        if data.len() > limit {// LibAFL clients race conditions race conditions
+            write_file_raw(//its OK to approximate, this log file just for info +-
+                fname, 
+                &data[size - (limit / 2)..]
+                )?;
+        }
+    }
+    append_file_raw(fname, data)
+}
+
 pub fn data_mut_unsafe<T>(data: &mut[u8]) -> &mut T {
     if mem::size_of::<T>() > data.len() {
         panic!("trying to load complex struct of size {} vs {}", mem::size_of::<T>(), data.len());
@@ -54,9 +74,11 @@ pub fn data_mut_unsafe<T>(data: &mut[u8]) -> &mut T {
     &mut val[0]
 }
 
+use std::backtrace::Backtrace;
+
 pub fn data_const_unsafe<T>(data: &[u8]) -> &T {
     if mem::size_of::<T>() > data.len() {
-        panic!("trying to view complex struct of size {} vs {}", mem::size_of::<T>(), data.len());
+        panic!("trying to view complex struct of size {} vs {} \n BACKTRACE : <\n{}\n>\n", mem::size_of::<T>(), data.len(), Backtrace::force_capture());
     }
     assert!(mem::size_of::<T>() <= data.len());
     let val = unsafe { ::std::slice::from_raw_parts(data.as_ptr() as *const T, 1) };

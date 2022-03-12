@@ -4,6 +4,8 @@ use std::cmp::min;
 extern crate rand;
 use rand::Rng;
 
+use banana::bananaq;
+
 use config::FZZCONFIG;
 
 use exec::call::Call;
@@ -72,8 +74,12 @@ pub struct StateInfo {
     pub total: usize,
     /// num of sucessfull ( syscall return OK value ) fuzzing iterations performed; debug reasons
     pub sucess: usize,
-    /// thread id as unique identifier
-    pub uid: u64,
+    /// level in ccache -> knowledge based fuzzing
+    pub level: usize,
+}
+
+impl StateInfo {
+    pub fn uid(&self) -> u64 { u64::from(thread::current().id().as_u64()) }
 }
 
 /// user mode state ( representation ) of target ( kernel object, remote object, io device, .. )
@@ -82,6 +88,8 @@ pub struct State {
     info: StateInfo,
     /// hardcoded limit per object how many iteration of fuzzing to perform on it - then close
     limit: usize,
+    /// how many times to stay at level if call is declined to call ( observer or fail )
+    n_failed_notify_allowed: usize,
     /// one of the main features of state, we can here calibrate behaviour which (set of)function should be called when
     slopes: Vec<[isize; 2]>,
     /// we need to preserve state, which level and which call is fuzzed
@@ -150,14 +158,17 @@ impl State {
         }
         self.info.total += 1;
         let fd = self.info.fd.clone();
-        for _ in 0..(self.groups[self.ccache.0].len() * 2) {
+        for _ in 0..self.n_failed_notify_allowed {
             self.ccache.1 = rand::thread_rng().gen_range(0..self.groups[self.ccache.0].len());
-            if self.call_view().dead() {
-                continue
-            }
-            if self.call_mut().do_call(&fd.data(), shared) {
-                return true
-            }
+            if !self.call_view().dead()
+                && self.call_mut().do_call(&fd.data(), shared) 
+            { return true }
+
+//            assert!(!self.call_view().dead(), "CALL VIEW DEAD");
+
+            if self.groups[self.ccache.0]
+                .iter()
+                .all(|ref call| call.dead()) { break }
         }
         self.call_dtor(shared);
         false
@@ -188,22 +199,31 @@ impl State {
     }
     /// update slopes - state of current State, that we can proceed to fuzz next layer of syscalls
     fn do_fuzz_update_impl(&mut self) -> bool {
+        let mut call = &mut self.groups[self.ccache.0][self.ccache.1];
+        let ok = if call.ok() { 1 } else { 0 };
+
+        self.ccache.0 = (self.ccache.0 as isize + self.slopes[self.ccache.0][ok]) as usize;
+        self.ccache.1 = !0;//invalidate!! - now self.{c/m}call() is pretty much invalid!
+
+        let level = self.info.level;
+        self.info.sucess += ok;
+        self.info.level = self.ccache.0;
+
+        if 0 != level {//write locked callback
+            bananaq::call_aftermath(&self.info, &mut call);
+        } // for ctors we have notify_ctor at core/banana/looper.rs
+
         if self.info.total > self.limit {
             return false
         }
-        if self.call_view().dead() && self.groups[self.ccache.0]
+        if call.dead() && self.groups[self.ccache.0]
             .iter()
             .filter(|&call| call.dead())
             .count() * 2 > self.groups[self.ccache.0].len()
         {
             return false
         }
-        if self.call_view().ok() {
-            self.info.sucess += 1;
-        }
-        self.ccache.0 = (self.ccache.0 as isize +
-                         self.slopes[self.ccache.0][self.call_view().ok() as usize]) as usize;
-        self.ccache.1 = !0;//invalidate!! - now self.{c/m}call() is pretty much invalid!
+
         true
     }
 
@@ -254,7 +274,9 @@ impl State {
     pub fn new(
         name: &'static str,
         id: StateTableId,
+        fd_size: usize,
         limit: usize,
+        n_failed_notify_allowed: usize,
         slopes: Vec<[isize; 2]>,
         groups: Vec< Vec<Call> >,
         dtor: Call
@@ -275,11 +297,12 @@ impl State {
                 name : String::from(name),
                 total : 0,
                 sucess : 0,
-                fd : Fd::empty(),
+                fd : Fd::empty(fd_size),
                 id : id,
-                uid : u64::from(thread::current().id().as_u64()),
+                level : 0,
             },
             limit : min(FZZCONFIG.new_limit, limit),
+            n_failed_notify_allowed: n_failed_notify_allowed,
             slopes : slopes,
             groups : groups,
             dtor: dtor,
@@ -298,6 +321,7 @@ impl State {
         id: StateTableId,
         fd: &Fd,
         limit: usize,
+        n_failed_notify_allowed: usize,
         slopes: Vec<[isize; 2]>,
         groups: Vec< Vec<Call> >,
         dtor: Call
@@ -313,7 +337,7 @@ impl State {
             panic!("one of the group for {} is oversized!", name);
         }
 
-        let level = slopes[0][0] as usize;
+        let level = slopes[0][1] as usize;
 
         State {
             info : StateInfo {
@@ -322,9 +346,10 @@ impl State {
                 sucess : 0,
                 fd : fd.clone(),
                 id : id,
-                uid : u64::from(thread::current().id().as_u64()),
+                level : level,
             },
             limit : min(FZZCONFIG.dup_limit, limit),
+            n_failed_notify_allowed: n_failed_notify_allowed,
             slopes : slopes,
             groups : groups,
             dtor: dtor,

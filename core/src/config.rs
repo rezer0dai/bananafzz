@@ -5,7 +5,7 @@ extern crate generic;
 pub struct FuzzyConfig {
     pub version: String,
     pub noisy: bool,
-    pub dead_call: usize,
+    pub dead_call: f64,
     pub state_update_freq: u16,
     pub max_racers_count: usize,
     pub max_queue_size: usize,
@@ -19,6 +19,7 @@ pub struct FuzzyConfig {
     pub push_count: u64,
     pub rnd_data_to_pattern: bool,
     pub afl_fix_ratio: f64,
+    pub n_failed_notify_allowed: usize,
 }
 
 impl FuzzyConfig {

@@ -47,6 +47,8 @@ impl FuzzyQ {
     ///
     /// therefore we choose randomly from our queue ( based on criteria of caller )
     pub fn get_rnd_fd_safe(&self, id: StateTableId) -> Fd {
+        assert!(0 != self.states.len(), "[bananafzz] get_rnd_safe queried while no state in queue, possible ?");
+        let size = self.states.iter().next().unwrap().1.fd.data().len();
         match self.states
             .iter()
             //.filter(|info| id == info.1.id)
@@ -57,7 +59,7 @@ impl FuzzyQ {
             .choose(&mut rand::thread_rng())
         {
             Some(info) => info.1.fd.clone(),
-            None => Fd::empty(),
+            None => Fd::empty(size),
         }
     }
 
@@ -68,8 +70,8 @@ impl FuzzyQ {
             .iter()
             .all(|obs| obs.notify(info, call))
     }
-    pub fn call_aftermath_safe<'a>(&self, call: &'a mut Call) {
-        let info = &self.states[&thread::current().id()];
+    pub fn call_aftermath_safe<'a>(&mut self, info: &StateInfo, call: &'a mut Call) {
+        self.update_safe(info);
         for obs in self.observers_call.iter() { 
             obs.aftermath(info, call) 
         }
@@ -133,12 +135,12 @@ impl FuzzyQ {
         }
         self.states.remove(&thread::current().id());
     }
-    pub fn update_safe(&mut self, fuzzy_info: StateInfo) {
+    pub fn update_safe(&mut self, fuzzy_info: &StateInfo) {
         // here we maybe want to double check how many same "fd" are in queue, and limit it by config
         // but i did not encounter issue with this, so i am letting this pass void
         assert!(self.states.contains_key(&thread::current().id()));
         if let Some(info) = self.states.get_mut(&thread::current().id()) {
-            *info = fuzzy_info;
+            *info = fuzzy_info.clone();
         }
     }
     pub fn empty(&self) -> bool {

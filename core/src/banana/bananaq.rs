@@ -7,7 +7,7 @@ use super::observer::{
 use exec::call::Call;
 use exec::fd_info::Fd;
 use state::id::StateTableId;
-use state::state::IFuzzyObj;
+use state::state::{IFuzzyObj, StateInfo};
 use super::queue::FuzzyQ;
 
 lazy_static! {
@@ -52,7 +52,7 @@ pub fn pop() {
 }
 pub fn update(fuzzy_obj: &Box<dyn IFuzzyObj>) {
     match FUZZY_QUEUE.write() {
-        Ok(mut banana) => banana.update_safe(fuzzy_obj.state().info()),
+        Ok(mut banana) => banana.update_safe(&fuzzy_obj.state().info()),
         Err(e) => panic!("FuzzyQ: update fail, syscall excepted .. no more to do here {}", e)
     };
 }
@@ -68,14 +68,14 @@ pub fn call_notify<'a>(call: &'a mut Call) -> bool {
     } else { false }
 }
 
-pub fn call_aftermath<'a>(call: &'a mut Call) {
-    if let Ok(banana) = FUZZY_QUEUE.read() {
-        banana.call_aftermath_safe(call)
+pub fn call_aftermath<'a>(info: &StateInfo, call: &'a mut Call) {
+    if let Ok(mut banana) = FUZZY_QUEUE.write() {
+        banana.call_aftermath_safe(info, call)
     }
 }
 
 pub fn get_rnd_fd(id: StateTableId) -> Fd {
     if let Ok(banana) = FUZZY_QUEUE.read() {
         banana.get_rnd_fd_safe(id)
-    } else { Fd::empty() }
+    } else { panic!("[bananafzz] get_rnd_fd called when lock poisoned") }
 }

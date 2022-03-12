@@ -4,7 +4,7 @@ use std::ops::{
     BitOr,
 };
 
-#[derive(Eq, Clone, Debug, Deserialize, Serialize)]
+#[derive(Eq, Copy, Clone, Debug, Deserialize, Serialize)]
 pub enum StateTableId {
     Id(u64),
 }

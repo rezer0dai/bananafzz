@@ -15,9 +15,9 @@ impl Fd {
         self.data = fd.data().to_vec();
     }
 
-    pub fn empty() -> Fd {
+    pub fn empty(size: usize) -> Fd {
 //        Fd { data : Vec::new() }
-        Fd { data : vec![0x00u8; 4] }
+        Fd { data : vec![0x00u8; size] }
     }
     pub fn dummy(size: usize) -> Fd {
         Fd { data : vec![0x00u8; size] }
