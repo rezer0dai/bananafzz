@@ -25,11 +25,14 @@ pub struct PocData {
 
     calls: Vec<Vec<u8>>,
     descs: Vec<PocCallDescription>,
-    runtime: Vec<(usize, u64)>,
-    added: usize,
+    runtime: Vec<(usize, u64, Vec<u8>)>,
+    pub added: usize,
     block: Vec<usize>,
 
     do_gen: bool,
+
+//    calls2: Vec<Vec<u8>>,
+//    descs2: Vec<PocCallDescription>,
 }
 impl PocData {
     pub fn new(magic: usize, addr: usize) -> PocData {
@@ -37,8 +40,6 @@ impl PocData {
             unsafe { ShmemData::new(magic, addr)}
         } else { ShmemData::new_empty(magic) };
         let mut info = shmem.head().clone();
-
-        let do_gen = !0 != info.split_at || !0 != info.insert_ind;
 
         let mut poc = if !0 != info.split_at {
             let poc = do_bananized_crossover(
@@ -56,7 +57,7 @@ impl PocData {
 
             shmem.head().insert_ind = info.insert_ind;
             let mut poc = PocData::new(magic, addr);
-            poc.do_gen = do_gen;
+            poc.do_gen = true;
 
             poc
         } else {
@@ -70,23 +71,27 @@ impl PocData {
                 info: info,
                 inserted: !0 == info.insert_ind,//means we dont want to append/insert nothing, just repro
 
-                calls: vec![vec![]],
+                calls: vec![],
                 descs: vec![],
                 runtime: vec![],
                 added: 0,
                 block: vec![],
                 do_gen: !0 != info.insert_ind,
+
+//                calls2: vec![],
+//                descs2: vec![],
             };
             poc.parse_calls();
             poc.parse_descs();
             poc
         };
         /*
+println!("NEW POC");
 
 for i in 0..poc.info.calls_count {
 println!("??");
     let desc = poc.desc_data(i);
-println!("? Call : {:?}", desc);
+println!("? [{i}] Call : {:?}", desc);
     let head = generic::data_const_unsafe::<PocCallHeader>(&shmem.data()[desc.offset..]);
 println!("\n\t?> Header : {:?}", head);
 }
@@ -101,18 +106,31 @@ println!("\n\t?> Header : {:?}", head);
 
     //is expected be called only from do_bananized_crossover
     pub fn append(&mut self, call: &[u8], kin: usize) {
-        self.push(self.calls.len(), call, kin);
+        self.inserted = false;
+        self.push(0, call, kin);//internally self.added += 1, which will be the place 0 + self.added
 
-        let call: &PocCallHeader = generic::data_const_unsafe(call);
-        self.runtime(call.level, call.uid);
+        let poc: &PocCallHeader = generic::data_const_unsafe(call);
+        self.runtime(poc.level, poc.uid, &call[
+            std::mem::size_of::<PocCallHeader>()..][..poc.fid_size]);
+
+        assert!(self.calls.len() == self.runtime.len());
+        self.inserted = true;
     }
     pub fn push(&mut self, ind: usize, call: &[u8], kin: usize) {
-//        assert!(self.info.calls_count == self.calls.len());
-        let ind = ind + self.added;
+        assert!(call.len() > 0);
+
+        if ind + self.added > self.calls.len() {
+            panic!("[BFL] how this could happen -> {:?} -> {:?}",
+                (ind, self.added, self.calls.len()),
+                (self.info.calls_count, self.info.insert_ind));
+        }
+        let ind = ind + self.added;// - self.block.len();
 
         if self.inserted {// && ind != self.info.insert_ind { 
             return // we already inserted one as we are in INSERT MODE of AFL
         }
+
+        self.added += 1;
 
         self.descs.insert(ind, PocCallDescription {
             offset : match ind {
@@ -135,13 +153,40 @@ println!("\n\t?> Header : {:?}", head);
         // total_size is not used for orig poc so we can update now
         // + basically call.len() will be originally hard to query later on
         self.info.total_size += call.len() + size_of::<PocCallDescription>();
-//        self.info.desc_size += size_of::<PocCallDescription>();
-//        self.info.calls_count += 1;
+    }
+    fn drop_blocked(&mut self) {
+        for ind in self.block
+            .drain(..)
+            .enumerate() 
+            .map(|(i, ind)| ind - i)
+        {
+            self.descs.remove(ind);
+            let call = self.calls.remove(ind);
+//ok we need to adjust offset table too
+            for i in 0..self.descs.len() {
+                self.descs[i].offset -= size_of::<PocCallDescription>();
+                if i < ind {
+                    continue
+                }
+                self.descs[i].offset -= call.len();
+            }
+            println!("[{ind}] : total size : {:?} - {:?}",
+                self.info.total_size, (size_of::<PocCallDescription>(), call.len()));
+            self.info.total_size -= size_of::<PocCallDescription>() + call.len();
+        }
     }
     pub fn craft_poc(&mut self) -> Vec<u8> {
 // by default we want mark all pocs from banana as repro-only, AFL choosing mode afterwards
-        self.info.calls_count = self.calls.len() - self.block.len();
+        if self.descs.len() != self.calls.len() {
+            panic!("NOT MADE EQUAL");
+            return vec![]
+        }
+
+        self.drop_blocked();
+
+        self.info.calls_count = self.calls.len();
         if 0 == self.info.calls_count {
+            panic!("NONE CALLS");
             return vec![]
         }
         self.info.desc_size = self.info.calls_count * size_of::<PocCallDescription>();
@@ -149,62 +194,77 @@ println!("\n\t?> Header : {:?}", head);
         self.info.split_at = !0; 
         self.info.split_cnt = 0; 
 
-        if 0 != self.runtime.len() {
-            if self.calls.len() > self.runtime.len() {
-                return vec![]//failed to repro!!
-            }
-        } else { // inserting first call, or crossover (handled by crossover should be -> now at append)
-            assert!(1 == self.info.calls_count, "[BFL] zero levels but non zero ({:?}) calls", self.calls.len());
-            let call = generic::data_const_unsafe::<PocCallHeader>(&self.calls[0]);
-            self.runtime = vec![(call.level, call.uid)];
-        }
+        if self.calls.len() != self.runtime.len()
+            && 1 + self.calls.len() != self.runtime.len() {
+            return vec![]//failed to repro!!
+        }//seems this could happen, TODO : how ??
+
+        assert!(
+            self.calls.len() == self.runtime.len()
+            || 1 + self.calls.len() == self.runtime.len(),
+            "#calls x #runtime => {:?}", (self.calls.len(), self.runtime.len()));
+
+println!("CRAFT POC => {:?} x {:?}", self.calls.len(), self.runtime.len());
 
         let mut data = vec![];
         data.extend_from_slice(
             unsafe { generic::any_as_u8_slice(&self.info) });
+
         data.extend(
             self.descs
                 .iter()
                 .enumerate()
-                .filter(|(i, _)| !self.block.contains(i))
                 .map(|(_, desc)| unsafe { generic::any_as_u8_slice(desc) } )
                 .flat_map(move |data| data.to_vec())
                 .collect::<Vec<u8>>());
 
-        let block = self.block.clone();
         data.extend(
             self.calls
                 .iter_mut()
                 .zip(self.runtime.iter())
-                .enumerate()
-                .filter(|(i, _)| !block.contains(i))
-                .flat_map(move |(_, (call, &(level, uid)))| {
+                .flat_map(move |(call, &(level, uid, ref fid))| {
+                    call[std::mem::size_of::<PocCallHeader>()..][..fid.len()]
+                            .clone_from_slice(&fid);
                     let mut c = generic::data_mut_unsafe::<PocCallHeader>(call);
                     c.level = level;
                     c.uid = uid;
                     call.to_vec()
                 })
                 .collect::<Vec<u8>>());
+            /*
+if self.info.calls_count > 1 {
+println!("[{:?}]<{:?}>", self.info.calls_count, &data[self.descs[self.info.calls_count-2].offset..]);
+}
+println!("[{:?}]<{:?}>", self.info.calls_count, &data[self.descs[self.info.calls_count-1].offset..]);
+
+unsafe {
+    println!("\n\n DOUBLE CHECK!!");
+let poc = PocData::new(66, std::mem::transmute(data.as_ptr()));
+    println!("\n\n CHECKED!!");
+}
+        */
         data
     }
 
     fn upload_poc(&mut self, addr: usize) -> bool {
-        if !0 == self.info.insert_ind {
+        if !self.do_gen {
             return true
         }
         let data = self.craft_poc();
         if 0 == data.len() {
+println!("POC0");
             return false
         }
         unsafe { POCDROP = true }//temporary
         unsafe { generic::c_memcpy(addr, &data) };
         true
     }
-    pub fn is_last_call(&self) -> bool {
+    pub fn is_last_call(&self, ind: usize) -> bool {
+        return ind == self.info.calls_count;
         if 0 == self.info.calls_count {
             return false
         }//exception for generation of first entry
-        self.inserted || self.info.calls_count == self.info.insert_ind
+        !0 == self.info.insert_ind || self.info.calls_count == self.info.insert_ind
     }
 //write to shared memory - pocout
     pub fn share(&mut self, addr: usize) -> bool {
@@ -219,22 +279,21 @@ println!("\n\t?> Header : {:?}", head);
         }
         self.info.magic = self.magic;
         if self.upload_poc(addr) {
+println!("UPLOADED!!");
             unsafe { REPROED = true }//temporary
-        }
-//        std::process::exit(0)
+        } else { println!("UPLOAD FAILED"); }
         true
     }
     pub fn skip(&mut self, ind: usize) {
-        self.block.push(ind)
+        self.block.push(ind + self.added);
     }
     pub fn add_one(&mut self, new_ind: usize) -> bool {
-        self.added += 1;
         self.inserted = false;
         self.info.insert_ind = new_ind;
         false
     }
-    pub fn runtime(&mut self, level: usize, uid: u64) {
-        self.runtime.push((level, uid))
+    pub fn runtime(&mut self, level: usize, uid: u64, fid: &[u8]) {
+        self.runtime.push((level, uid, fid.to_vec()))
     }
     pub fn max_ind(&self) -> usize {
         if !self.inserted {
@@ -252,11 +311,14 @@ println!("\n\t?> Header : {:?}", head);
         &self.info
     }
 
-    pub fn load(&mut self, ind: usize) -> &mut[u8] {
+    pub fn load(&mut self, ind: usize) -> &[u8] {
+//if self.calls2.len() > 0 { return &self.calls2[ind] }
         let call = self.desc_data(ind).clone();
-        &mut self.shmem.data()[call.offset..][..call.size]
+while call.offset > self.shmem.data().len() { println!("--> CALL {call:?}") }
+        &self.shmem.data()[call.offset..][..call.size]
     }
     pub fn desc_data(&mut self, ind: usize) -> &mut PocCallDescription {
+//if self.descs2.len() > 0 { return &mut self.descs2[ind] }
         let desc = &mut self.shmem.data()[
                 size_of::<PocDataHeader>() + 
                 ind * size_of::<PocCallDescription>()..
@@ -269,6 +331,7 @@ println!("\n\t?> Header : {:?}", head);
         self.calls = (0..self.info.calls_count)
             .map(|ind| self.load(ind).to_vec())
             .collect::<Vec<Vec<u8>>>();
+//        self.calls2 = self.calls.clone();
     }
     fn parse_descs(&mut self) {
         self.descs = (0..self.info.calls_count)
@@ -276,5 +339,6 @@ println!("\n\t?> Header : {:?}", head);
                 *self.desc_data(ind)
             })
             .collect::<Vec<PocCallDescription>>();
+//        self.descs2 = self.descs2.clone();
     }
 }

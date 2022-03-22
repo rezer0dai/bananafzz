@@ -5,6 +5,10 @@ use super::leaf::IArgLeaf;
 
 use generic::native_alloc::NativeAlloc;
 
+use super::super::banana::bananaq::FuzzyQ;
+use std::sync::Weak;
+
+
 fn build_arg(atype: &str, prefix: String, postfix: String, data: &[u8]) -> String {
     atype.to_string() + "arg<" + &data.len().to_string() + ">{ " +
         &prefix + "arg<" + &data.len().to_string() + ">{ {" +
@@ -106,8 +110,8 @@ impl Arg {
     ///
     /// - for primitive type it will do just one generation
     /// - for complex types ( memory arguments mainly ) will generate trough composite which will walk trough its leafs
-    pub fn do_generate(&mut self, fd: &[u8], shared: &[u8]) -> &mut Self {
-        self.generator.generate(self.data.data_mut(), fd, shared);
+    pub fn do_generate(&mut self, bananaq: &Weak<FuzzyQ>, fd: &[u8], shared: &[u8]) -> &mut Self {
+        self.generator.generate(bananaq, self.data.data_mut(), fd, shared);
         self
     }
     pub fn do_save_shared(&mut self, shared: &mut[u8]) {

@@ -1,5 +1,9 @@
 use super::serialize::ISerializableArg;
 
+use super::super::banana::bananaq::FuzzyQ;
+use std::sync::Weak;
+
+
 /// abstraction for Argument of {sys/api/..}call
 ///
 /// - we force user to be serializable -> to ensure backward POC compatibility
@@ -37,14 +41,14 @@ pub trait IArgLeaf : ISerializableArg {
     ///     }
     /// }
     /// ```
-    fn generate_unsafe(&mut self, mem: &mut[u8], fd: &[u8], shared: &[u8]);
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &[u8]);
 
     /// wrapping GenerateImpl per Argument, to check slice length corectness!
-    fn generate(&mut self, mem: &mut[u8], fd: &[u8], shared: &[u8]) {
+    fn generate(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &[u8]) {
         if mem.len() != self.size() {
             panic!("trying to generate Argument with wrong size {} -> {} vs {}", self.name(), mem.len(), self.size());
         }
-        self.generate_unsafe(mem, fd, shared);
+        self.generate_unsafe(bananaq, mem, fd, shared);
     }
 
     fn save_shared(&mut self, _mem: &[u8], _shared: &mut[u8]) { }

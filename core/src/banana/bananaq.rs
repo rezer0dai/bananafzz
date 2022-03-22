@@ -1,81 +1,113 @@
-use std::sync::RwLock;
+use std::backtrace::Backtrace;
 
 use super::observer::{
     ICallObserver,
     IStateObserver,
 };
 use exec::call::Call;
-use exec::fd_info::Fd;
-use state::id::StateTableId;
+use super::super::state::id::StateTableId;
+use super::super::exec::fd_info::Fd;
 use state::state::{IFuzzyObj, StateInfo};
-use super::queue::FuzzyQ;
+use super::super::config::FZZCONFIG;
 
-lazy_static! {
-    /// sync primitive around Queue for fuzzing, singleton concept - for more better to check
-    /// queue.rs instead
-    static ref FUZZY_QUEUE: RwLock<FuzzyQ> = RwLock::new(FuzzyQ::new());
-}
+use std::sync::{Arc, Weak, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-pub fn attach_call_observer(obs: Box<dyn ICallObserver>) {
-    if let Ok(mut banana) = FUZZY_QUEUE.write() {
-        banana.observers_call.push(obs)
+use super::queue;
+pub type FuzzyQ = RwLock<queue::FuzzyQ>;
+
+fn read_prot<F, T>(banana: &Weak<FuzzyQ>, action: F) -> Result<T, &'static str>
+where F: Fn(&RwLockReadGuard<queue::FuzzyQ>) -> T
+{
+    if let Some(banana) = banana.upgrade() {
+        if let Ok(banana) = banana.read() {
+            return Ok(action(&banana))
+        }
     }
-}
-pub fn attach_state_observer(obs: Box<dyn IStateObserver>) {
-    if let Ok(mut banana) = FUZZY_QUEUE.write() {
-        banana.observers_state.push(obs)
-    }
-}
-pub fn detach_observers() {
-    if let Ok(mut banana) = FUZZY_QUEUE.write() {
-        banana.observers_call.clear();
-        banana.observers_state.clear();
-    }
+    Err("[fuzzing] main bananaq droped main reference")
 }
 
-pub fn empty() -> bool {
-    FUZZY_QUEUE.read().unwrap().empty()
-}
-pub fn push(fuzzy_obj: &Box<dyn IFuzzyObj>) -> bool {
-    if let Ok(mut banana) = FUZZY_QUEUE.write() {
-        banana.push_safe(fuzzy_obj.state().info())
-    } else { false }
-}
-pub fn pop() {
-    if let Ok(banana) = FUZZY_QUEUE.read() {
-        banana.dtor_notify_safe()
+fn write_prot<F, T>(banana: &Weak<FuzzyQ>, mut action: F) -> Result<T, &'static str>
+where F: FnMut(&mut RwLockWriteGuard<queue::FuzzyQ>) -> T
+{
+    if let Some(banana) = banana.upgrade() {
+        if let Ok(mut banana) = banana.write() {
+            return Ok(action(&mut banana))
+        }
     }
-    match FUZZY_QUEUE.write() {
-        Ok(mut banana) => banana.pop_safe(),
-        Err(e) => panic!("FuzzyQ: pop fail, syscall excepted .. no more to do here {}", e)
-    };
-}
-pub fn update(fuzzy_obj: &Box<dyn IFuzzyObj>) {
-    match FUZZY_QUEUE.write() {
-        Ok(mut banana) => banana.update_safe(&fuzzy_obj.state().info()),
-        Err(e) => panic!("FuzzyQ: update fail, syscall excepted .. no more to do here {}", e)
-    };
+    Err("[fuzzing] main bananaq droped main reference")
 }
 
-pub fn ctor_notify(fuzzy_obj: &Box<dyn IFuzzyObj>) -> bool {
-    if let Ok(banana) = FUZZY_QUEUE.read() {
-        banana.ctor_notify_safe(fuzzy_obj.state().info())
-    } else { false }
-}
-pub fn call_notify<'a>(call: &'a mut Call) -> bool {
-    if let Ok(banana) = FUZZY_QUEUE.read() {
-        banana.call_notify_safe(call)
-    } else { false }
+pub fn ping(banana: &Weak<FuzzyQ>) -> Result<(), &'static str> {
+    write_prot(banana, |_| Err("ALL GOOD"))?
 }
 
-pub fn call_aftermath<'a>(info: &StateInfo, call: &'a mut Call) {
-    if let Ok(mut banana) = FUZZY_QUEUE.write() {
-        banana.call_aftermath_safe(info, call)
+pub fn attach_call_observer(banana: &mut Arc<FuzzyQ>, obs: Box<dyn ICallObserver>) {
+    Arc::get_mut(banana).unwrap().write().unwrap().observers_call.push(obs)
+}
+pub fn attach_state_observer(banana: &mut Arc<FuzzyQ>, obs: Box<dyn IStateObserver>) {
+    Arc::get_mut(banana).unwrap().write().unwrap().observers_state.push(obs)
+}
+
+pub fn push<'a>(banana: &Weak<FuzzyQ>, fuzzy_obj: &Box<dyn IFuzzyObj>) -> Result<bool, &'static str> {
+    write_prot(banana, |banana| banana.push_safe(fuzzy_obj.state().info()))
+}
+
+pub fn dtor<'a>(banana: &Weak<FuzzyQ>) -> Result<(), &'static str> {
+    read_prot(banana, |banana| banana.dtor_notify())?;
+    write_prot(banana, |banana| banana.pop_safe())
+}
+pub fn update(info: &StateInfo) -> Result<(), &'static str> {
+    write_prot(&info.bananaq, |banana| banana.update_safe(info))
+}
+
+pub fn call_aftermath<'a>(info: &mut StateInfo, call: &'a mut Call) -> Result<(), &'static str> {
+    update(info)?;
+    if let Some(banana) = info.bananaq.upgrade() {
+        return Ok(banana.read().unwrap().call_aftermath_safe(info, call))
     }
+    Err("[bananaq] aftermath after bananaq gone")
 }
 
-pub fn get_rnd_fd(id: StateTableId) -> Fd {
-    if let Ok(banana) = FUZZY_QUEUE.read() {
-        banana.get_rnd_fd_safe(id)
-    } else { panic!("[bananafzz] get_rnd_fd called when lock poisoned") }
+pub fn call_notify<'a>(banana: &Weak<FuzzyQ>, call: &'a mut Call) -> bool {
+    if let Some(banana) = banana.upgrade() {
+        return banana.read().unwrap().call_notify(call)
+    }
+    false
+}
+pub fn ctor_notify<'a>(info: StateInfo) -> bool {
+    if let Some(banana) = info.bananaq.upgrade() {
+        return banana.read().unwrap().ctor_notify(info)
+    }
+    false
+}
+pub fn get_rnd_fd(banana: &Weak<FuzzyQ>, id: StateTableId) -> Result<Fd, &'static str> {
+    read_prot(banana, |banana| banana.get_rnd_fd(id))
+}
+pub fn is_active(info: &StateInfo) -> Result<bool, &'static str> {
+    read_prot(&info.bananaq, |banana| banana.active())
+}
+pub fn stop(banana: &Weak<FuzzyQ>) -> Result<(), &'static str> {
+    if FZZCONFIG.noisy {
+        println!("[bananaq] QUEUE STOP: {:?}", Backtrace::force_capture()
+            .frames()
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| (3..=4).contains(i))
+            .map(|(_, s)| format!("{:?}", s))
+            .collect::<Vec<String>>()
+////            .nth(3)
+//            .enumerate()
+//            .map(|(i, s)| format!("\n [{i}] <{s:?}>"))
+//            .collect::<Vec<String>>()
+//            .join("\n")
+            );
+    }
+    read_prot(&banana, |banana| banana.stop())
+}
+
+pub fn len(bananaq: &Weak<FuzzyQ>) -> Result<usize, &'static str> {
+    read_prot(bananaq, |banana| banana.len())
+}
+pub fn qid(bananaq: &Weak<FuzzyQ>) -> Result<u64, &'static str> {
+    read_prot(bananaq, |banana| banana.qid())
 }

@@ -4,15 +4,22 @@ extern crate serde_derive;
 extern crate rand;
 use rand::Rng;
 
-use std::{thread, time};
+use std::{
+    time,
+    thread, 
+    sync::Weak,
+};
 
 extern crate core;
 
 use core::banana::observer::{ICallObserver, IStateObserver};
-use core::state::state::StateInfo;
+use core::state::{state::StateInfo, id::StateTableId};
+use core::exec::fd_info::Fd;
+use core::banana::bananaq::FuzzyQ;
 
-extern crate common;
-use self::common::ModuleCallbacks;
+extern "C" {
+    pub fn push_state(bananaq: &Weak<FuzzyQ>, state: StateTableId, fd: &Fd);
+}
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct RaceUnlockConfig {
@@ -21,7 +28,6 @@ pub struct RaceUnlockConfig {
 }
 struct RaceUnlock {
     cfg: RaceUnlockConfig,
-    callbacks: Box<dyn ModuleCallbacks>,
 }
 
 impl IStateObserver for RaceUnlock {
@@ -32,12 +38,14 @@ impl IStateObserver for RaceUnlock {
         for _ in 0..self.cfg.racer_count {
             let info = state.clone();
             let sleep = self.cfg.sleep;
-            let push_state = self.callbacks.push_state();
+            let bananaq = state.bananaq().clone();
             thread::spawn(move || {
                 thread::sleep(time::Duration::from_millis(
                     rand::thread_rng().gen_range(0..=sleep),
                 ));
-                push_state(info.id, &info.fd);
+                unsafe {
+                    push_state(&bananaq, info.id, &info.fd)
+                }
             });
         }
         true
@@ -46,22 +54,20 @@ impl IStateObserver for RaceUnlock {
 }
 
 impl RaceUnlock {
-    pub(crate) fn new(cfg: &RaceUnlockConfig, callbacks: Box<dyn ModuleCallbacks>) -> RaceUnlock {
+    pub fn new(cfg: &RaceUnlockConfig) -> RaceUnlock {
         RaceUnlock {
             cfg: *cfg,
-            callbacks: callbacks,
         }
     }
 }
 pub fn observers(
     cfg: &Option<RaceUnlockConfig>,
-    callbacks: Box<dyn ModuleCallbacks>,
 ) -> (
     Option<Box<dyn IStateObserver>>,
     Option<Box<dyn ICallObserver>>,
 ) {
-    match *cfg {
-        Some(ref cfg) => (Some(Box::new(RaceUnlock::new(cfg, callbacks))), None),
-        _ => (None, None),
-    }
+    if let Some(ref cfg) = *cfg {
+        (Some(Box::new(RaceUnlock::new(cfg))), None)
+        
+    } else { (None, None) }
 }

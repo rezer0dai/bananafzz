@@ -1,8 +1,12 @@
-use std::collections::HashMap;
-use std::thread;
+use std::{
+    thread,
+    rc::Rc,
+    sync::RwLock,
+    collections::HashMap,
+};
 
 extern crate rand;
-use rand::seq::SliceRandom;
+use rand::{Rng, seq::SliceRandom};
 
 use super::observer::{
     ICallObserver,
@@ -27,9 +31,11 @@ pub struct FuzzyQ {
     ///
     /// - duplicate resolving
     /// - callback forwarding
+    qid: u64,
+    active: Rc<RwLock<bool>>,
     states: HashMap< thread::ThreadId, StateInfo >,
-    pub observers_state: Vec< Box<dyn IStateObserver> >,
-    pub observers_call: Vec< Box<dyn ICallObserver> >,
+    pub(crate) observers_state: Vec< Box<dyn IStateObserver> >,
+    pub(crate) observers_call: Vec< Box<dyn ICallObserver> >,
 }
 
 unsafe impl Send for FuzzyQ {}
@@ -38,15 +44,23 @@ unsafe impl Sync for FuzzyQ {}
 impl FuzzyQ {
     pub fn new() -> FuzzyQ {
         FuzzyQ {
+            qid : rand::thread_rng().gen(),
+            active : Rc::new(RwLock::new(true)),
             states : HashMap::new(),
             observers_state : Vec::new(),
             observers_call : Vec::new(),
         }
     }
+
+    pub(crate) fn qid(&self) -> u64 { self.qid }
+    pub(crate) fn len(&self) -> usize { self.states.len() }
+    pub(crate) fn active(&self) -> bool { *self.active.read().unwrap() }
+    pub(crate) fn stop(&self) { *self.active.write().unwrap() = false; }
+
     /// certain calls want to intercorporate foreign state
     ///
     /// therefore we choose randomly from our queue ( based on criteria of caller )
-    pub fn get_rnd_fd_safe(&self, id: StateTableId) -> Fd {
+    pub fn get_rnd_fd(&self, id: StateTableId) -> Fd {
         assert!(0 != self.states.len(), "[bananafzz] get_rnd_safe queried while no state in queue, possible ?");
         let size = self.states.iter().next().unwrap().1.fd.data().len();
         match self.states
@@ -64,20 +78,28 @@ impl FuzzyQ {
     }
 
     /// call callback
-    pub fn call_notify_safe<'a>(&self, call: &'a mut Call) -> bool {
+    pub fn call_notify<'a>(&self, call: &'a mut Call) -> bool {
+        if !self.active() {
+            return false
+        }
         let info = &self.states[&thread::current().id()];
         self.observers_call
             .iter()
             .all(|obs| obs.notify(info, call))
     }
-    pub fn call_aftermath_safe<'a>(&mut self, info: &StateInfo, call: &'a mut Call) {
-        self.update_safe(info);
+    pub fn call_aftermath_safe<'a>(&self, info: &StateInfo, call: &'a mut Call) {
+        if !self.active() {
+            return
+        }
         for obs in self.observers_call.iter() { 
             obs.aftermath(info, call) 
         }
     }
     /// state destruction callback
-    pub fn dtor_notify_safe(&self) {
+    pub fn dtor_notify(&self) {
+        if !self.active() {
+            return
+        }
         let info = &self.states[&thread::current().id()];
         for obs in self.observers_state.iter() {
             obs.notify_dtor(info);
@@ -86,7 +108,10 @@ impl FuzzyQ {
     /// state creation callback
     ///
     /// - checking dups ( same state already in queue - limit from config -> how many to allow )
-    pub fn ctor_notify_safe(&self, info: StateInfo) -> bool {
+    pub fn ctor_notify(&self, info: StateInfo) -> bool {
+        if !self.active() {
+            return false
+        }
         let dups = self.states
             .iter()
             .filter(|&(_, ref state)| (state.fd.equals(&info.fd) && (state.id.clone() & info.id.clone())))
@@ -101,6 +126,9 @@ impl FuzzyQ {
 
     /// we fuzzing only one state in one thread!
     pub fn push_safe(&mut self, fuzzy_info: StateInfo) -> bool {
+        if !self.active() {
+            return false
+        }
         let same_kind = self.states
             .iter()
             .filter(|&(_, ref state)| (state.id.clone() & fuzzy_info.id.clone()))
@@ -136,6 +164,9 @@ impl FuzzyQ {
         self.states.remove(&thread::current().id());
     }
     pub fn update_safe(&mut self, fuzzy_info: &StateInfo) {
+        if !self.active() {
+            return
+        }
         // here we maybe want to double check how many same "fd" are in queue, and limit it by config
         // but i did not encounter issue with this, so i am letting this pass void
         assert!(self.states.contains_key(&thread::current().id()));

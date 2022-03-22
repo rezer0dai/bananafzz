@@ -1,9 +1,10 @@
-use std;
-
 extern crate core;
 use self::core::exec::call::Call;
 use self::core::exec::fd_info::CallInfo;
 use self::core::generator::arg::Arg;
+use self::core::generator::leaf::IArgLeaf;
+use self::core::generator::serialize::ISerializableArg;
+use self::core::banana::bananaq::{self, FuzzyQ};
 
 extern crate api;
 use self::api::leafs::deref_leaf::*;
@@ -11,6 +12,22 @@ use self::api::leafs::deref_leaf::*;
 use args::movem::*;
 
 use common::table::CallIds;
+
+struct KOLeaf { }
+
+use std::sync::Weak;
+
+impl ISerializableArg for KOLeaf { }
+
+impl IArgLeaf for KOLeaf {
+    fn size(&self) -> usize { 0 }
+    fn name(&self) -> &'static str { "K.O. Leaf" }
+
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, _mem: &mut[u8], _fd: &[u8], _shared: &[u8]) {
+//        bananaq.upgrade().unwrap().write().unwrap().stop()
+        bananaq::stop(bananaq).unwrap()
+    }
+}
 
 pub trait GameOver {
 	fn game_over() -> Call;
@@ -21,8 +38,8 @@ impl GameOver for Call {
 			CallIds::game_over.into(),
 			"game_over",
 			vec![
-				Arg::memory_arg(
-					Box::new(DeRef::new(FD_SIZE))),
+				Arg::primitive_arg(
+					Box::new( KOLeaf { } )),
 			],
 			|args| { 
                 /*

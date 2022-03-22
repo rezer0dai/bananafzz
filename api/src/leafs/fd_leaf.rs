@@ -10,8 +10,10 @@ extern crate core;
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 use self::core::generator::serialize::SerializationInfo;
-use self::core::banana::bananaq;
 use self::core::state::id::StateTableId;
+
+use self::core::banana::bananaq::{self, FuzzyQ};
+use std::sync::Weak;
 
 use self::core::exec::fd_info::Fd;
 
@@ -67,11 +69,11 @@ impl IArgLeaf for FdHolder {
         "Fd"
     }
 
-    fn generate_unsafe(&mut self, mem: &mut [u8], fd: &[u8], shared: &[u8]) {
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], fd: &[u8], shared: &[u8]) {
         self.fds
             .choose_mut(&mut rand::thread_rng())
             .unwrap()
-            .generate(mem, fd, shared);
+            .generate(bananaq, mem, fd, shared);
     }
 }
 
@@ -98,14 +100,17 @@ impl IArgLeaf for RndFd {
     /// 4:6 we share valid object / state
     ///
     /// other time we provide NULL or invalid one
-    fn generate_unsafe(&mut self, mem: &mut [u8], _: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], _: &[u8], _: &[u8]) {
         match rand::thread_rng().gen_range(0u8..=7) {
             0 => mem.clone_from_slice(&Fd::dummy(self.size()).data()),
             1 => mem.clone_from_slice(&Fd::invalid(self.size()).data()),
             _ => {
                 mem.clone_from_slice(&Fd::dummy(self.size()).data());
 
-                let fd = bananaq::get_rnd_fd(self.id.clone());
+                let fd = match bananaq::get_rnd_fd(bananaq, self.id.clone()) {
+                    Ok(fd) => fd,
+                    Err(_) => return,
+                };
                 if fd.data().is_empty() {
                     return;
                 }

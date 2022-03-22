@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
 extern crate core;
+use self::core::banana::bananaq::FuzzyQ;
+use std::sync::Weak;
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 use self::core::generator::serialize::SerializationInfo;
@@ -40,7 +42,10 @@ impl<T> IArgLeaf for Bfl<T>
         self.leaf.name()
     }
 
-    fn generate_unsafe(&mut self, mem: &mut [u8], fd: &[u8], shared: &[u8]) {
-        self.leaf.generate_unsafe(mem, fd, shared)
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], fd: &[u8], shared: &[u8]) {
+        self.leaf.generate_unsafe(bananaq, mem, fd, shared)
+    }
+    fn save_shared(&mut self, mem: &[u8], shared: &mut[u8]) { 
+        self.leaf.save_shared(mem, shared)
     }
 }

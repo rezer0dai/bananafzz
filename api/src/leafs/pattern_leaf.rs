@@ -1,4 +1,7 @@
+use std::sync::Weak;
+
 extern crate core;
+use self::core::banana::bananaq::FuzzyQ;
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 
@@ -26,7 +29,7 @@ impl IArgLeaf for Pattern {
 
     fn name(&self) -> &'static str { "Pattern" }
 
-    fn generate_unsafe(&mut self, mem: &mut[u8], _: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &[u8]) {
       mem.fill(self.pattern)
     }
 }

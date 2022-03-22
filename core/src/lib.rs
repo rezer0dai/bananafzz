@@ -1,4 +1,5 @@
-#![feature(thread_id_value)]
+#![feature(thread_id_value, backtrace, backtrace_frames)]
+
 
 #[macro_use]
 extern crate lazy_static;

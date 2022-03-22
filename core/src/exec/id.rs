@@ -34,10 +34,13 @@ pub enum CallTableId {
 }
 
 impl CallTableId {
-  // first 0x10 enums are reserved to avoid limiter to limit those, or other modules to filter
-  // them out
+  // first 0x10 enums are reserved to avoid limiter to limit those, 
+  // or other modules to filter them out
+  pub const fn non_default_start() -> u64 {
+      0x10
+  }
   pub fn is_default(self) -> bool {
-      for id in 0..0x10 {
+      for id in 0..CallTableId::non_default_start() {
         if CallTableId::Id(id) == self {
           return true;
         }

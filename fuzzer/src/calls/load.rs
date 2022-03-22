@@ -56,8 +56,12 @@ impl LoadPos for Call {
 //let (pos_x, pos_y) = *pos.data_const_unsafe::<(u32, u32)>();
 //println!("LOADed : <{:?}#{:?}> + <{:?}#{:?}>", pos_x, pos_y, rel_x, rel_y);
 
-                    if rel_x.abs() < 10 && rel_y.abs() < 10 {
-//println!("OK LOAD");
+                    if rel_x.abs() < 90 && rel_y.abs() < 55 {
+{
+let midx: Move = (mid as u8).into();
+if Move::Mario != midx 
+{ println!("===> {midx:?} x {:?} -> {:?}", mid as u8, (rel_x, rel_y)); }
+}
                         CallInfo::succ(0)
                     } else {
                         CallInfo::fail(0)
@@ -115,7 +119,7 @@ impl LoadPos for Call {
                 if let [coin] = &mut args[..] {
 
                     let (rel_x, rel_y) = *coin.data_mut_unsafe::<(i8, i8)>();
-                    if rel_x.abs() > 10 || rel_y.abs() > 10 {
+                    if rel_x.abs() > 90 || rel_y.abs() > 55 {
                         return CallInfo::fail(0)
                     }
                     CallInfo::succ(0)

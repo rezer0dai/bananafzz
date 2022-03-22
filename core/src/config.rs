@@ -19,7 +19,6 @@ pub struct FuzzyConfig {
     pub push_count: u64,
     pub rnd_data_to_pattern: bool,
     pub afl_fix_ratio: f64,
-    pub n_failed_notify_allowed: usize,
 }
 
 impl FuzzyConfig {

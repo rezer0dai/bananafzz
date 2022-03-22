@@ -1,17 +1,18 @@
 version = "bananized AFL on Super Mario Bros"
-noisy = false#true#
+noisy = true#false#
+
+max_racers_count = 2#3
+max_queue_size = 6#7
+ratio = 3
+
 dead_call = 0.0
 state_update_freq = 2
-max_racers_count = 4
-max_queue_size = 100
 singlethread = true#false#
-active_seconds = 3
+active_seconds = 1
 push_sleep = 0#222
 new_limit = 3000
-dup_limit = 100
-ratio = 3
+dup_limit = 3000
 after_creation_sleep = 0#100
 push_count = 33
 rnd_data_to_pattern = false
 afl_fix_ratio = 1.0
-n_failed_notify_allowed = 10000

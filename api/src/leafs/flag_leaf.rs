@@ -1,6 +1,7 @@
 use std::mem;
 use std::ops::BitAnd;
 use std::ops::BitOr;
+use std::sync::Weak;
 use std::collections::HashMap;
 
 extern crate rand;
@@ -8,6 +9,7 @@ use rand::Rng;
 use rand::distributions::{Standard, Distribution};
 
 extern crate core;
+use self::core::banana::bananaq::FuzzyQ;
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 
@@ -61,7 +63,7 @@ impl<T: Copy + BitAnd + BitOr> IArgLeaf for Flag<T>
     /// we do 6:1 generation based on defiition
     ///
     /// and 1:6 we provide random numero
-    fn generate_unsafe(&mut self, mem: &mut[u8], _: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &[u8]) {
         *generic::data_mut_unsafe::<T>(mem) = T::from(
             self.always | T::from(
                 rand::thread_rng().gen::<T>() & self.flag));

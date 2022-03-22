@@ -2,26 +2,18 @@
 pub struct BananizedFuzzyLoopConfig {
     pub magic: usize,
 
+    pub debug: bool,
+
     pub shmem: usize,
     pub pocmem: usize,
+
+    pub max_inserts: usize,
+    pub max_allowed_wait_count_per_call: usize,
+    pub is_strict_repro: bool,
 
     pub warmup_cnt: usize,
     pub ctor_min_ratio: usize,
     pub ctor_max_ratio: usize,
-}
-impl BananizedFuzzyLoopConfig {
-    pub fn new() -> BananizedFuzzyLoopConfig {
-        BananizedFuzzyLoopConfig {
-            magic: 0,
-
-            shmem: 0,
-            pocmem: 0,
-
-            warmup_cnt: 0,
-            ctor_min_ratio: 0,
-            ctor_max_ratio: 0,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy)]

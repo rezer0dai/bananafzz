@@ -1,6 +1,6 @@
 [package]
 name = "plugs"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["re:Zer0dAI <tutti@frutti.com>"]
 
 [dependencies]
@@ -11,6 +11,7 @@ rand = "0.8.4"
 core = { path = "../../core" }
 common = { path = "../common" }
 generic = { path = "../../generic" }
+syncer = { path = "../syncer" }
 filter = { path = "../filter" }
 raceunlocker = { path = "../raceunlocker" }
 sleeper = { path = "../sleeper" }
@@ -18,4 +19,5 @@ limiter = { path = "../limiter" }
 debug = { path = "../debug" }
 mediator = { path = "../mediator" }
 bfl = { path = "../bfl" }
+smb = { path = "../smb" }
 

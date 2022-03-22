@@ -1,7 +1,9 @@
 use std::mem;
+use std::sync::Weak;
 use std::collections::HashMap;
 
 extern crate core;
+use self::core::banana::bananaq::FuzzyQ;
 use self::core::generator::arg::Arg;
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
@@ -51,7 +53,7 @@ impl IArgLeaf for Ptr {
         "Ptr"
     }
 
-    fn generate_unsafe(&mut self, mem: &mut [u8], fd: &[u8], shared: &[u8]) {
-        *generic::data_mut_unsafe::<*const u8>(mem) = self.arg.do_generate(fd, shared).data_const_unsafe();
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], fd: &[u8], shared: &[u8]) {
+        *generic::data_mut_unsafe::<*const u8>(mem) = self.arg.do_generate(bananaq, fd, shared).data_const_unsafe();
     }
 }

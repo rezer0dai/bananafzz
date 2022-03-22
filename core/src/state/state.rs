@@ -1,10 +1,15 @@
-use std::thread;
-use std::cmp::min;
+use std::{
+    thread,
+    time::Duration,
+    cmp::min,
+    sync::Weak,
+};
 
 extern crate rand;
 use rand::Rng;
 
 use banana::bananaq;
+use banana::bananaq::FuzzyQ;
 
 use config::FZZCONFIG;
 
@@ -43,9 +48,9 @@ pub trait IFuzzyObj : Send + Sync + IFdState {//quite pitty that i can not do Bo
     ///     }
     /// }
     /// ```
-    fn fuzzy_loop(&mut self) -> bool;
+    fn fuzzy_loop(&mut self, state_idx: u16) -> Result<(), String>;
     /// will do essentialy same as fuzzy_loop, however is invoked only until state is not initialized
-    fn fuzzy_init(&mut self) -> bool;
+    fn fuzzy_init(&mut self) -> Result<(), String>;
     /// we want forward information about current state + calls to callbacks
     ///
     /// - only immutable
@@ -65,6 +70,7 @@ pub trait IFuzzyObj : Send + Sync + IFdState {//quite pitty that i can not do Bo
 /// sharable informations with FuzzyQueue (rnd fd arg, de-dups, ..) && with modules; cheap to copy
 #[derive(Clone)]
 pub struct StateInfo {
+    pub bananaq: Weak<FuzzyQ>,
     pub name: String,//maybe too expensive to share, and can be skipped ?
     /// id is specific per fuzzing target ( vmwp, vmbus, packets, w32k, ntos, alpc, io, .. )
     pub id: StateTableId,
@@ -76,10 +82,13 @@ pub struct StateInfo {
     pub sucess: usize,
     /// level in ccache -> knowledge based fuzzing
     pub level: usize,
+    /// signaling when dtors apply
+    pub finished: bool,
 }
 
 impl StateInfo {
     pub fn uid(&self) -> u64 { u64::from(thread::current().id().as_u64()) }
+    pub fn bananaq(&self) -> Weak<FuzzyQ> { self.bananaq.clone() }
 }
 
 /// user mode state ( representation ) of target ( kernel object, remote object, io device, .. )
@@ -121,6 +130,7 @@ pub struct State {
 }
 
 impl State {
+
     pub fn name(&self) -> &str { &self.info.name }
     pub fn id(&self) -> StateTableId { self.info.id.clone() }
 
@@ -152,26 +162,39 @@ impl State {
     /// - also some blacklisting of too often rejected call - very OK by modules
     /// - and maybe tracking uniformity of selection globaly per State - forbid prefering one syscall by thread_rng ?
     ///     - in general this can be crucial part of fuzzer which i neglected to tinker with yet..
-    pub fn do_fuzz_one(&mut self, shared: &mut[u8]) -> bool {
+    pub fn do_fuzz_one(&mut self, shared: &mut[u8]) -> Result<(), String> {
         if self.info.total > self.limit {
-            return false
+            return Err(format!("[state] out of fuzzing limit total : {:?} > limit : {:?}",
+                    self.info.total, self.limit))
         }
         self.info.total += 1;
         let fd = self.info.fd.clone();
-        for _ in 0..self.n_failed_notify_allowed {
-            self.ccache.1 = rand::thread_rng().gen_range(0..self.groups[self.ccache.0].len());
-            if !self.call_view().dead()
-                && self.call_mut().do_call(&fd.data(), shared) 
-            { return true }
+        let mut dead = false;
 
-//            assert!(!self.call_view().dead(), "CALL VIEW DEAD");
+        let bananaq = &self.info.bananaq;
+
+        let mut i = 0;
+//        while i <= self.n_failed_notify_allowed {
+        while bananaq::is_active(&self.info)? {
+            i += 1;
+
+            self.ccache.1 = rand::thread_rng().gen_range(0..self.groups[self.ccache.0].len());
+            if !self.call_view().dead() 
+                && self.groups[self.ccache.0][self.ccache.1]
+                    .do_call(&bananaq, &fd.data(), shared) 
+            { return Ok(()) }
+
+            thread::sleep(Duration::from_nanos(1));
 
             if self.groups[self.ccache.0]
                 .iter()
-                .all(|ref call| call.dead()) { break }
+                .any(|ref call| !call.dead()) { continue }
+            dead = true;
+            break 
         }
         self.call_dtor(shared);
-        false
+
+        Err(format!("[state] end of fuzzing cycle for this object <{:?}::{:?}>, is dead : {:?}; fuzzing attempts for this round : {:?}, total fuzzed calls : {:?} -> {}\n\t==> w/ shared<{:?}>", self.info.name, fd.data(), dead, i, self.info.total, if self.ccache.0 < self.groups.len() && self.ccache.1 < self.groups[self.ccache.0].len() { self.call_view().name() } else { "no-call-yet" }, &shared))
     }
 
     /// need to be called after do_fuzz_one, to change level based on slopes!
@@ -179,26 +202,40 @@ impl State {
     /// - call once do_fuzz_one will return true
     /// - this basically wraps do_fuzz_update_impl, that it checks for end of fuzzing
     ///     - and then it performs closing of this State by calling dtor syscall!
-    pub fn do_fuzz_update(&mut self, shared: &mut[u8]) -> bool {
+    pub fn do_fuzz_update(&mut self, shared: &mut[u8]) -> Result<(), String> {
+        thread::yield_now();
+
         //maybe better weight it against #calls in current group
         //this way we trust a lot that every call is implemented correctly == good way
         //it is quick death then, like object is no longer online
         //however, if some syscall poorely implemented this will kill fuzzing for whole fuzzy object most
         // likely ...
-        if self.do_fuzz_update_impl() {
-            return true
-        }
+        let e = match self.do_fuzz_update_impl() {
+            Ok(_) => return Ok(()),
+            Err(e) => e,
+        };
         self.call_dtor(shared);
-        false
+
+        Err(format!("[state] failing fuzzning cycle : update failed for fuzzed object <{:?}::{:?}> total fuzzed calls : {:?}, with details <{e}>", self.info.name, self.info.fd.data(), self.info.total))
     }
     fn call_dtor(&mut self, shared: &mut[u8]) {
+        thread::yield_now();
+
         if self.info.fd.is_invalid() {
             return
         }
-        self.dtor.do_call(self.info.fd.data(), shared);
+        self.info.level = usize::MAX;
+        self.info.finished = true;
+
+        if let Ok(_) = bananaq::update(&self.info) {
+            self.dtor.do_call(&self.info.bananaq, self.info.fd.data(), shared);
+        }
     }
     /// update slopes - state of current State, that we can proceed to fuzz next layer of syscalls
-    fn do_fuzz_update_impl(&mut self) -> bool {
+    fn do_fuzz_update_impl(&mut self) -> Result<(), String> {
+while usize::MAX == self.info.level { println!("DTOR CALLED UPDATE CALLED TOO!!") }
+        assert!(usize::MAX != self.info.level);
+
         let mut call = &mut self.groups[self.ccache.0][self.ccache.1];
         let ok = if call.ok() { 1 } else { 0 };
 
@@ -210,21 +247,30 @@ impl State {
         self.info.level = self.ccache.0;
 
         if 0 != level {//write locked callback
-            bananaq::call_aftermath(&self.info, &mut call);
+            bananaq::call_aftermath(&mut self.info, &mut call)?;
         } // for ctors we have notify_ctor at core/banana/looper.rs
 
         if self.info.total > self.limit {
-            return false
-        }
-        if call.dead() && self.groups[self.ccache.0]
-            .iter()
-            .filter(|&call| call.dead())
-            .count() * 2 > self.groups[self.ccache.0].len()
-        {
-            return false
+            return Err(format!("fuzzed over limit : total:{:?} vs limit:{:?}",
+                    self.info.total, self.limit))
         }
 
-        true
+        if !call.dead() {
+            return Ok(())
+        }
+
+        let dead_calls = self.groups[self.ccache.0]
+            .iter()
+            .filter(|&call| call.dead())
+            .map(|call| format!("<{}>", call.name()))
+            .collect::<Vec<String>>();
+
+        if dead_calls.len() * 2 < self.groups[self.ccache.0].len() {
+            return Ok(())
+        }
+
+        Err(format!("more thatn 1/2 of group #{:?} call are dead; with current calls {:?}",
+                self.ccache.0, dead_calls.join("")))
     }
 
     /// TODO :
@@ -272,6 +318,7 @@ impl State {
     ///         - by konwledge based approach do all work before+afer syscall is invoked, more
     ///         logic level leading
     pub fn new(
+        bananaq: Weak<FuzzyQ>,
         name: &'static str,
         id: StateTableId,
         fd_size: usize,
@@ -294,12 +341,14 @@ impl State {
 
         State {
             info : StateInfo {
+                bananaq : bananaq,
                 name : String::from(name),
                 total : 0,
                 sucess : 0,
                 fd : Fd::empty(fd_size),
                 id : id,
                 level : 0,
+                finished : false,
             },
             limit : min(FZZCONFIG.new_limit, limit),
             n_failed_notify_allowed: n_failed_notify_allowed,
@@ -317,6 +366,7 @@ impl State {
     ///     - not necessary FD, sometimes can mean other than file descriptor only, but any runtime unique ID
     ///         - id of allocation, id of font in global table, crc32(string), runtime memory pointer, of some name uuid ? ...
     pub fn duped(
+        bananaq: Weak<FuzzyQ>,
         name: &'static str,
         id: StateTableId,
         fd: &Fd,
@@ -341,12 +391,14 @@ impl State {
 
         State {
             info : StateInfo {
+                bananaq : bananaq,
                 name : String::from(name),
                 total : 0,
                 sucess : 0,
                 fd : fd.clone(),
                 id : id,
                 level : level,
+                finished : false,
             },
             limit : min(FZZCONFIG.dup_limit, limit),
             n_failed_notify_allowed: n_failed_notify_allowed,

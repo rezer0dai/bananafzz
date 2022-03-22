@@ -8,26 +8,22 @@ use self::core::exec::fd_info::Fd;
 use super::state::*;
 
 impl IFuzzyObj for MarioState {
-    fn fuzzy_loop(&mut self) -> bool {
-        if !self.state.do_fuzz_one(&mut self.shared) {
-            return false
-        }
-        if !self.fuzz_one() {
-            return false
-        }
-//        if self.state.call_view().ok() {
-//            println!("OK : {}", self.state.call_view().name())
-//        }
-        if !self.state.do_fuzz_update(&mut self.shared) {
-            return false
+    fn fuzzy_loop(&mut self, _stage_idx: u16) -> Result<(), String> {
+        if let Err(e) = self.state.do_fuzz_one(&mut self.shared) {
+            println!("[loop] quit : <{}>", e);
+            return Err(e)
         }
 
-        true
-    }
-    fn fuzzy_init(&mut self) -> bool {
-        if !self.state.do_fuzz_one(&mut self.shared) {
-            return false
+        self.fuzz_one()?;
+
+        if let Err(e) = self.state.do_fuzz_update(&mut self.shared) {
+            println!("[loop] quit : <{}>", e);
+            return Err(e)
         }
+        Ok(())
+    }
+    fn fuzzy_init(&mut self) -> Result<(), String> {
+        self.state.do_fuzz_one(&mut self.shared)?;
 
         let fd = self.do_init();
         self.state.init(&fd);

@@ -8,29 +8,19 @@ use self::core::exec::fd_info::Fd;
 use super::state::*;
 
 impl IFuzzyObj for CoinsState {
-    fn fuzzy_loop(&mut self) -> bool {
-        if !self.state.do_fuzz_one(&mut self.shared) {
-            return false
-        }
-        if !self.fuzz_one() {
-            return false
-        }
-//        if self.state.call_view().ok() {
-//            println!("OK : {}", self.state.call_view().name())
-//        }
-        if !self.state.do_fuzz_update(&mut self.shared) {
-            return false
-        }
+    fn fuzzy_loop(&mut self, _stage_idx: u16) -> Result<(), String> {
+        self.state.do_fuzz_one(&mut self.shared)?;
 
-        true
+        self.fuzz_one()?;
+
+        self.state.do_fuzz_update(&mut self.shared)
     }
-    fn fuzzy_init(&mut self) -> bool {
-        if !self.state.do_fuzz_one(&mut self.shared) {
-            return false
-        }
+    fn fuzzy_init(&mut self) -> Result<(), String> {
+        self.state.do_fuzz_one(&mut self.shared)?;
 
         let fd = self.do_init();
         self.state.init(&fd);
+
         self.state.do_fuzz_update(&mut self.shared)
     }
     fn state(&self) -> &State {

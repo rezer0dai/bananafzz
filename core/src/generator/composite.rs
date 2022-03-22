@@ -7,6 +7,9 @@ use super::serialize::{
     SerializationInfo
 };
 
+use super::super::banana::bananaq::FuzzyQ;
+use std::sync::Weak;
+
 /// structure capable of describing any argument, composed of IArgLeafs
 ///
 /// - mostly any custom argument declared for syscall should implement this!
@@ -121,7 +124,7 @@ impl IArgLeaf for ArgComposite {
     fn name(&self) -> &'static str { self.name }
 
     //better if this will be private ( different trait dont used in queue )
-    fn generate_unsafe(&mut self, mem: &mut[u8], fd: &[u8], shared: &[u8]) {
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &[u8]) {
         // for &(off, ref mut arg) in self.args.iter() {
         //     let size = arg.size();
         //     arg.generate(&mut mem[off..off+size])
@@ -131,11 +134,11 @@ impl IArgLeaf for ArgComposite {
         for i in 0..self.args.len() {
             let (off, ref mut arg) = self.args[i];
             let size = arg.size();
-            arg.generate(&mut mem[off..off+size], fd, shared)
+            arg.generate(bananaq, &mut mem[off..off+size], fd, shared)
         }
 
         if let Some(ref mut logicer) = &mut self.logicer {
-            logicer.generate_unsafe(mem, fd, shared)
+            logicer.generate_unsafe(bananaq, mem, fd, shared)
         }//we could use function instead of IArgLeaf, but likely we want to the same with "load" in the future
     }
     fn save_shared(&mut self, mem: &[u8], shared: &mut[u8]) { 

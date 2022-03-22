@@ -7,11 +7,13 @@ use self::core::exec::id::CallTableId;
 #[allow(dead_code)]
 #[repr(u64)]
 pub enum StateIds {
-    FdGeneric = 0x1FF0,
     FdMario = 0x100,
     FdShroom = 0x200,
     FdEnemy = 0x400,
-    FdCoins = 0x800,
+
+    FdCoins = 0x10000,
+    FdQBoxs = 0x11000,
+    FdBrick = 0x12000,
 }
 
 impl From<StateTableId> for StateIds {
@@ -36,11 +38,9 @@ impl Into<StateTableId> for StateIds {
 #[derive(PartialEq)]
 pub enum CallIds {
     dummy = 0,
-    dup,
 
-    close = 2,
+    non_defaults = CallTableId::non_default_start(),
 
-    mario = 0x10,
     move_mario,
     load_pos,
     game_over,

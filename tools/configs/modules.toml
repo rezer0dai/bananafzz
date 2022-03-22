@@ -1,7 +1,11 @@
-online = ["libbfl", "liblimiter"]#, "libdebug"]#"libfilter"]"libraceunlock",  "libpoclog","liblimiter", 
+online = ["liblimiter", "libsyncer", "libraceunlock", "libsmb", "libbfl"]#, "libdebug"]#"libfilter"] "libpoclog",
 
 [core.bfl]
 magic = 66
+debug = true#false#
+max_inserts = 20
+max_allowed_wait_count_per_call = 66#200#888
+is_strict_repro = true
 shmem = 0
 pocmem = 0
 warmup_cnt = 0
@@ -22,14 +26,15 @@ fname = "bpoc"
 printout = false#true
 
 [core.raceunlock]
-sleep = 33
+sleep = 0
 racer_count = 6
 
 [core.overpoc]
 size_of_log = 200
 
 [core.limiter]
-num_of_calls = 2000
+num_of_calls = 200
+failed_limit = 666#1000
 
 [core.grayfuzz]
 path = "./"

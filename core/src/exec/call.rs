@@ -1,16 +1,14 @@
-use std::sync::Mutex;
 use std::collections::HashMap;
 
 use generator::arg::Arg;
-use banana::bananaq;
+
+use super::super::banana::bananaq::FuzzyQ;
+use super::super::banana::bananaq;
+use std::sync::Weak;
+
 use super::id::CallTableId;
 use super::fd_info::CallInfo;
 use config::FZZCONFIG;
-
-lazy_static! {
-    /// sync primitive for single threading - POC generation, and Code Coverage gathering
-    static ref SYNC: Mutex<CallTableId> = Mutex::new(CallTableId::Id(0));
-}
 
 /// will describle (sys)call ( or other mechanism api/io .. )
 pub struct Call {
@@ -43,6 +41,7 @@ pub struct Call {
     ///     }}
     /// ```
     ccall: fn(args: &mut[Arg]) -> CallInfo,
+    n_attempts: usize,
 }
 
 impl Call {
@@ -95,6 +94,7 @@ impl Call {
             success : 0,
             args : args,
             ccall : ccall,
+            n_attempts : 0,
         }
     }
 
@@ -105,13 +105,15 @@ impl Call {
     /// 3. (do_call_impl)invoke callbacks to all modules -> forward this job to Banana Internal Manager in fact ..
     /// 4. (do_call_impl)invoke function responsible to invoke targeted call
     /// 5. store results
-    pub fn do_call(&mut self, fd: &[u8], shared: &mut[u8]) -> bool {
+    pub fn do_call(&mut self, bananaq: &Weak<FuzzyQ>, fd: &[u8], shared: &mut[u8]) -> bool {
+        self.n_attempts += 1;
+
         self.total += 1;
         for arg in self.args.iter_mut() {
-            arg.do_generate(fd, shared);
+            arg.do_generate(bananaq, fd, shared);
         }
 
-        if !self.do_call_safe() {
+        if !self.do_call_safe(bananaq) {
             return false
         }
 
@@ -122,6 +124,7 @@ impl Call {
         if self.einfo.success() {
             self.success += 1
         }
+        self.n_attempts = 0;
         //(self.ret <= self.ok.end && self.ret >= self.ok.start) as usize;//self.ok.contains(self.ret);
         true
     }
@@ -156,8 +159,8 @@ impl Call {
 /// 2. if approved invoke syscall
 /// 3. have in mind that in case of single thread approach this need to be locked!
 ///     - therefore do_call_safe wrapper there..
-    fn do_call_impl(&mut self) -> bool {
-        if !bananaq::call_notify(self) {
+    fn do_call_impl(&mut self, bananaq: &Weak<FuzzyQ>) -> bool {
+        if !bananaq::call_notify(bananaq, self) {
 //panic!("OBSERVER BLOCKING");
             return false
         }
@@ -172,17 +175,8 @@ impl Call {
 /// - poc creation from fuzzing loops
 /// - code coverage ( because we need to repro fuzzed loops to benefit from code coverage .. )
 /// - ??
-    fn do_call_safe(&mut self) -> bool {
-        if !FZZCONFIG.singlethread {
-            return self.do_call_impl()
-        }
-        match SYNC.lock() {
-            Ok(mut qcall) => { *qcall = self.id.clone(); self.do_call_impl() },
-            Err(pois) => {
-                println!("call-lock is poisoned, by this syscall : {:?}", *pois.into_inner());
-                std::process::exit(0)
-            }
-        }
+    fn do_call_safe(&mut self, bananaq: &Weak<FuzzyQ>) -> bool {
+        return self.do_call_impl(bananaq)
     }
 
     /// print call to string that way we can reproduce it from PoC ( mini c++ program ) later
@@ -217,6 +211,7 @@ impl Call {
     pub fn dead(&self) -> bool { FZZCONFIG.dead_call > (1 + self.success) as f64 / (1 + self.allowed) as f64 }//from config!!
     pub fn einfo(&self) -> &[u8] { &self.einfo.extra_info() }
     pub fn kin(&self) -> usize { self.einfo.kin() }
+    pub fn n_attempts(&self) -> usize { self.n_attempts }
 
     pub fn neg_ret(&mut self) { self.einfo.negate() }
 

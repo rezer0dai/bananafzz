@@ -18,7 +18,7 @@ impl ShmemData {
             shmem.data = std::mem::transmute(shmem.zero.as_ptr());
             shmem.head().magic = magic;
             shmem.head().total_size = shmem.size;
-            shmem.head().insert_ind = 0;//empty memdata are for crossover
+            shmem.head().insert_ind = !0;
             shmem.head().split_at = !0;
             shmem
         }
@@ -26,7 +26,7 @@ impl ShmemData {
     pub unsafe fn new(magic: usize, addr: usize) -> ShmemData {
         let poc : &mut PocDataHeader = std::mem::transmute(addr);
         if magic != poc.magic {
-            panic!("[BFL] shared invalid poc, magic does not match <{:X} vs {:X}>",
+            println!("[BFL] shared invalid poc, magic does not match <{:X} vs {:X}>",
                 magic, poc.magic)
         }
         let size = if !0 != poc.split_at {
@@ -41,7 +41,10 @@ impl ShmemData {
                 size += cross.total_size };
 
             size
-        } else { poc.total_size };
+        } else {//if magic == poc.magic { 
+            poc.total_size 
+        };// else { 0 };
+
         ShmemData {
             data : std::mem::transmute(addr),
             size: size,

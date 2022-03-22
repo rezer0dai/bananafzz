@@ -1,4 +1,7 @@
+use std::sync::Weak;
+
 extern crate core;
+use self::core::banana::bananaq::FuzzyQ;
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 use self::core::generator::serialize::SerializationInfo;
@@ -46,7 +49,7 @@ impl IArgLeaf for DeRef {
 
     fn name(&self) -> &'static str { "Fd" }
 
-    fn generate_unsafe(&mut self, mem: &mut[u8], fd: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], _: &[u8]) {
       mem.copy_from_slice(&fd[self.offset..self.offset+self.size]);
     }
 }

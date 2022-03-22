@@ -1,5 +1,5 @@
 //#![feature(llvm_asm, asm, unboxed_closures)]
-#![feature(unboxed_closures, backtrace)]
+#![feature(unboxed_closures)]
 
 pub mod native_alloc;
 
@@ -74,11 +74,9 @@ pub fn data_mut_unsafe<T>(data: &mut[u8]) -> &mut T {
     &mut val[0]
 }
 
-use std::backtrace::Backtrace;
-
 pub fn data_const_unsafe<T>(data: &[u8]) -> &T {
     if mem::size_of::<T>() > data.len() {
-        panic!("trying to view complex struct of size {} vs {} \n BACKTRACE : <\n{}\n>\n", mem::size_of::<T>(), data.len(), Backtrace::force_capture());
+        panic!("trying to view complex struct of size {} vs {}", mem::size_of::<T>(), data.len());
     }
     assert!(mem::size_of::<T>() <= data.len());
     let val = unsafe { ::std::slice::from_raw_parts(data.as_ptr() as *const T, 1) };

@@ -1,5 +1,7 @@
 use std::mem;
-use std::ops::RangeInclusive;
+use std::sync::Weak;
+use std::fmt::Debug;
+use std::ops::{RangeInclusive, Sub, Add, Rem};
 use std::cmp::PartialOrd;
 use std::collections::HashMap;
 
@@ -9,6 +11,7 @@ use rand::distributions::uniform::SampleUniform;
 use rand::seq::SliceRandom;
 
 extern crate core;
+use self::core::banana::bananaq::FuzzyQ;
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 
@@ -45,7 +48,7 @@ impl<T> Bounded<T>
     }
 }
 
-impl<T: Copy + PartialOrd + SampleUniform + std::fmt::Debug> ISerializableArg for Bounded<T>
+impl<T: Copy + PartialOrd + SampleUniform + Debug + Add<Output = T> + Sub<Output = T> + Rem<Output = T>> ISerializableArg for Bounded<T>
 {
     fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
         let size = self.default_load(mem, dump, data);
@@ -53,34 +56,30 @@ impl<T: Copy + PartialOrd + SampleUniform + std::fmt::Debug> ISerializableArg fo
             return size
         }
 
-        let afl_data = *generic::data_const_unsafe::<T>(mem);
-        let afl_data = &afl_data;
+        let afl_val: &T = generic::data_const_unsafe(mem);
         for bounds in self.bounds.iter() {
-            if bounds.start() > afl_data || bounds.end() < afl_data {
-                continue
+            if bounds.contains(afl_val) {
+                return size
             }
-            return size
         }
 
         let seed = dump.iter().sum::<u8>() as usize;
         let bounds = &self.bounds[seed % self.bounds.len()];
-        *generic::data_mut_unsafe::<T>(mem) = if bounds.start() > afl_data {
-                *bounds.start()
-            } else {
-                *bounds.end()
-            };
+
+        *generic::data_mut_unsafe::<T>(mem) = 
+            *bounds.start() + (*afl_val % (*bounds.end() - *bounds.start()));
 
         size
     }
 }
 
-impl<T: Copy + PartialOrd + SampleUniform + std::fmt::Debug> IArgLeaf for Bounded<T>
+impl<T: Copy + PartialOrd + SampleUniform + Debug + Add<Output = T> + Sub<Output = T> + Rem<Output = T>> IArgLeaf for Bounded<T>
 {
     fn size(&self) -> usize { mem::size_of::<T>() }
 
     fn name(&self) -> &'static str { "Bounded" }
 
-    fn generate_unsafe(&mut self, mem: &mut[u8], _: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &[u8]) {
         *generic::data_mut_unsafe::<T>(mem) = match self.bounds.clone().choose(&mut rand::thread_rng()) {
             Some(bounds) => rand::thread_rng().gen_range(bounds.clone()),
             None => panic!("nothing in bound array ?"),

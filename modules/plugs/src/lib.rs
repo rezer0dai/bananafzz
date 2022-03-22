@@ -15,11 +15,7 @@ use core::exec::fd_info::Fd;
 use core::banana::observer::{ICallObserver, IStateObserver};
 use core::state::id::StateTableId;
 
-extern crate common;
-use common::ModuleCallbacks;
-
-pub mod callbacks;
-use callbacks::PlugCallbacks;
+extern crate libsyncer;
 
 extern crate libfilter;
 use libfilter::FilterConfig;
@@ -42,8 +38,11 @@ use libmediator::MediatorConfig;
 extern crate libbfl;
 use libbfl::BananizedFuzzyLoopConfig;
 
+extern crate libsmb;
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ConfigCore {
+    syncer: Option<()>,
     filter: Option<FilterConfig>,
     raceunlock: Option<RaceUnlockConfig>,
     sleeper: Option<SleeperConfig>,
@@ -51,6 +50,7 @@ pub struct ConfigCore {
     debug: Option<DebugConfig>,
     mediator: Option<MediatorConfig>,
     pub bfl: Option<BananizedFuzzyLoopConfig>,//lets share only what we know we need
+    smb: Option<()>,
 }
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
@@ -108,15 +108,13 @@ pub struct Plugins {
 }
 
 impl Plugins {
-    pub fn new<F>(cfg: Config, push_state: &'static F) -> Plugins
-    where
-        F: Fn(StateTableId, &Fd) + std::marker::Sync + std::marker::Send,
+    pub fn new(cfg: Config) -> Plugins
     {
         Plugins {
             observers: cfg
                 .online
                 .iter()
-                .map(|module| Plugins::load_observer(module, &cfg.core, push_state))
+                .map(|module| Plugins::load_observer(module, &cfg.core))
                 .collect(),
             cfg: cfg,
         }
@@ -130,15 +128,16 @@ impl Plugins {
     ///     - aka i can use 3 years old fuzzer with latest new module
     ///     - though if it really brings some benefits, loosing sources to fuzzer and use it later
     ///     is problem in its own sense
-    fn load_observer<F>(module: &String, cfg: &ConfigCore, push_state: &'static F) -> Observer
-    where
-        F: Fn(StateTableId, &Fd) + std::marker::Sync + std::marker::Send,
+    fn load_observer(module: &String, cfg: &ConfigCore) -> Observer
     {
-        let qcallbacks = Box::new(PlugCallbacks::new(push_state));
         match module.as_str() {
             "libraceunlock" => Observer {
                 name: module.clone(),
-                obs: libraceunlocker::observers(&cfg.raceunlock, qcallbacks.clone()),
+                obs: libraceunlocker::observers(&cfg.raceunlock),
+            },
+            "libsyncer" => Observer {
+                name: module.clone(),
+                obs: libsyncer::observers(),
             },
             "libfilter" => Observer {
                 name: module.clone(),
@@ -150,7 +149,7 @@ impl Plugins {
             },
             "liblimiter" => Observer {
                 name: module.clone(),
-                obs: liblimiter::observers(&cfg.limiter, qcallbacks.clone()),
+                obs: liblimiter::observers(&cfg.limiter),
             },
             "libdebug" => Observer {
                 name: module.clone(),
@@ -164,6 +163,10 @@ impl Plugins {
                 name: module.clone(),
                 obs: libbfl::observers(&cfg.bfl),
             },
+            "libsmb" => Observer {
+                name: module.clone(),
+                obs: libsmb::observer(),
+            },
             _ => Observer {
                 name: module.clone(),
                 obs: (None, None),
@@ -172,22 +175,11 @@ impl Plugins {
     }
 }
 
-pub fn plug<F>(push_state: &'static F) -> Result<Plugins, io::Error>
-where
-    F: Fn(StateTableId, &Fd) + std::marker::Sync + std::marker::Send,
+pub fn plug() -> Result<Plugins, io::Error>
 {
     match load_cfg() {
-        Ok(cfg) => Ok(Plugins::new(cfg, push_state)),
+        Ok(cfg) => Ok(Plugins::new(cfg)),
         Err(e) => return Err(e),
     }
 }
 
-fn bad_design(_: StateTableId, _: &Fd) {}
-
-pub fn stop_fuzzing() {
-    // problem is that plugins need this in some generic way
-    // and also plugcallbacks need access to plugin global stuffs ( stop, log, .. )
-    // and there we are with main.rs to stop fuzzing by generic way and PlugCallbacks beeing trait
-    // TODO : maybe to rethink stop_fuzzing mechanism
-    PlugCallbacks::new(&bad_design).stop_fuzzing()
-}

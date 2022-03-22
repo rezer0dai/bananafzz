@@ -21,3 +21,4 @@ api = { path = "../api" }
 plugs = { path = "../modules/plugs" }
 bfl = { path = "../modules/bfl" }
 smb = { path = "../modules/smb" }
+bijon = { path = "../modules/bijon" }

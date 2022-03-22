@@ -43,7 +43,7 @@ impl MoveMario for Call {
                         ) }
                     let (after_x, after_y) = *pos.data_const_unsafe::<(i32, u32)>();
                     if  0 == after_x {
-//println!("GAME OVE BY EMULATOR");
+println!("GAME OVE BY EMULATOR");
                         return CallInfo::fail(0)
                     }//game over
 
@@ -51,23 +51,42 @@ impl MoveMario for Call {
                     let move_x = move_r - move_l;
                     let target_x = before_x + move_x as i32;
 
+                    let cash = pos.data()[Move::Cash as usize - POS_START];
+                    let power = pos.data()[Move::Power as usize - POS_START];
+if false {
+let mid: Move = mid.into();
+println!("pre-MARIO {mid:?} data::{:?}; action=>{:?}", &pos.data()[8..], action.data());
+}
                     let ok = match mid.into() {
                         Move::Mario => //we go at least so far, or closer than before
                             after_x + 3 > target_x,
 //                            || (after_x - target_x).abs() < (before_x - target_x).abs(),
-                        Move::Coin => //reached target ? lets only on X
-                            (after_x-3..after_x+3).contains(&target_x)
+                        Move::Brick => //reached target ? lets only on X
+                            (after_x-7..after_x+7).contains(&target_x),
                         //coins++ ?
-                            || 0 != pos.data()[Move::Cash as usize - POS_START],
+                        Move::Coin => //reached target ? lets only on X
+                            cash != pos.data()[Move::Cash as usize - POS_START],
                         //enemy out ? 
-                        Move::Enemy => 0 == pos.data()[mid as usize - POS_START],
+                        Move::Enemy => {
+println!("ENEMY {mid} sucess? {:?}; on the move! {:?} <= {:?}", 0 == pos.data()[mid as usize - POS_START], action.data(), ((target_x - after_x) as isize).abs());
+                            0 == pos.data()[mid as usize - POS_START]
+                        },
                         //boosted ? 
-                        Move::Shroom => 0 != pos.data()[Move::Power as usize - POS_START],
+                        Move::Shroom => power != pos.data()[Move::Power as usize - POS_START],
                         _ => panic!("[SMB2] unknown match of MID"),
                     };
 
-//let mid: Move = mid.into();
-//println!("[{:?}]move call : {:?} -> {:?} x {:?} x {:?}", mid, ok, after_x, target_x, before_x);
+
+//if 1 == pos.data()[9 - POS_START] {
+let mid: Move = mid.into();
+if true {//Move::Mario != mid {
+if ok {
+    generic::append_file_raw_with_limit("hits.txt", format!("${mid:?}{after_x:?}->{:?};\n", (cash == pos.data()[Move::Cash as usize - POS_START], power != pos.data()[Move::Power as usize - POS_START])).as_bytes(), 1000);
+}
+println!("[{:?}] CASH++? {ok} : -> {:?} x {:?} x {:?} Y<{:?}>Y <{:?} .. {:?}> // {:?}", mid, after_x, target_x, before_x, (before_y, after_y), pos.data()[9 - POS_START], (after_x-3..after_x+3).contains(&target_x), (move_r, move_l, move_x));
+}
+//let ok = true;
+                            
 //return CallInfo::fail(after_x as usize);
 
                     return if ok { //kin is X coordinate, for crossovers

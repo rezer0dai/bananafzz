@@ -1,7 +1,10 @@
+use std::sync::Weak;
+
 extern crate rand;
 use rand::Rng;
 
 extern crate core;
+use self::core::banana::bananaq::FuzzyQ;
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 
@@ -31,7 +34,7 @@ impl IArgLeaf for RndData {
 
     fn name(&self) -> &'static str { "RndData" }
 
-    fn generate_unsafe(&mut self, mem: &mut[u8], _: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &[u8]) {
         assert!(mem.len() == self.size);//check in debug is OK
         rand::thread_rng().fill(mem);
     }
