@@ -4,7 +4,6 @@ extern crate core;
 
 use core::exec::call::Call;
 use core::banana::observer::{ICallObserver, IStateObserver};
-use core::banana::bananaq;
 use core::state::state::StateInfo;
 
 use std::sync::{

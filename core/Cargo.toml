@@ -1,11 +1,10 @@
 [package]
 name = "core"
-version = "0.2.0"
+version = "0.1.0"
 authors = ["re:Zer0dAI <slavic@voyager.com>"]
 
 [dependencies]
 rand = "0.8.4"
-lazy_static = "1.4.0"
 toml = "0.5.8"
 serde = "1.0.131"
 serde_derive = "1.0.131"

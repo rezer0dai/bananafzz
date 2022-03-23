@@ -3,7 +3,8 @@ use self::core::state::id::StateTableId;
 
 use super::super::common::table::*;
 
-#[derive(Debug, PartialEq, Clone)]
+#[allow(dead_code)]
+#[derive(PartialEq, Debug, Clone)]
 #[repr(u8)]
 pub enum Move {
     Mid = 0,

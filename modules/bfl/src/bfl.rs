@@ -1,14 +1,12 @@
 use std::{
-    sync::Weak,
     mem::size_of,
     collections::{BTreeMap,HashMap,BTreeSet,HashSet},
 };
 
 use core::exec::call::Call;
 use core::exec::id::CallTableId;
-use core::exec::fd_info::Fd;
 use core::state::state::StateInfo;
-use core::banana::bananaq::{self, FuzzyQ};
+use core::banana::bananaq;
 
 use repro::PocCall;
 use poc::PocData;
@@ -16,9 +14,6 @@ pub use info::{BananizedFuzzyLoopConfig, PocCallHeader};
 
 extern crate rand;
 use self::rand::Rng;
-
-pub static mut KNOWLEDGE_MAP: [u8; 255 * 50] = [0; 255 * 50];
-static mut SHADOW_KNOWLEDGE_MAP: [u8; 255 * 50] = [0; 255 * 50];
 
 type TUidLookup = BTreeMap<u64, u64>;
 type TFdLookup = HashMap< Vec<u8>, Vec<u8> >;
@@ -107,7 +102,7 @@ impl BananizedFuzzyLoop {
         self.fid_lookup.insert(fid_a.to_vec(), fid_b.to_vec());
         true
     }
-    fn stop_or_force(&mut self, bananaq: &Weak<FuzzyQ>, poc: &PocCall, n_attempts: usize, add_prob: f64) -> bool {
+    fn stop_or_force(&mut self, n_attempts: usize, add_prob: f64) -> bool {
         if !self.poc.do_gen() && self.cfg.is_strict_repro {
             return false
         }
@@ -130,9 +125,9 @@ if self.cfg.debug { println!("atempts are good, try harder => {:?} /{n_attempts}
 
         if self.poc.do_gen() // we may try to insert someting here
             && self.poc.added < self.cfg.max_inserts 
-            && rand::thread_rng().gen_bool(add_prob) // ok to do as if poc.do_gen it is not counted to coverage feedback!!
-
-             && !self.poc.is_last_call(1 + self.poc_ind)
+// ok to do as if poc.do_gen it is not counted to coverage feedback!!
+            && rand::thread_rng().gen_bool(add_prob) 
+            && !self.poc.is_last_call(1 + self.poc_ind)//this does not make sense to enable
 //        { return self.poc.add_one(self.poc_ind) }
         { 
 if self.cfg.debug { println!("@@@@@@@@@@@@@@@@@@@@@@@@ adding one more to fuzz ({:?} x {:?}) || stats => {:?}", (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed)); }
@@ -142,7 +137,7 @@ if self.cfg.debug { println!("@@@@@@@@@@@@@@@@@@@@@@@@ adding one more to fuzz (
         self.poc.skip(self.poc_ind);
         self.poc_ind += 1;
         self.fuzzy_cnt = 0;
-if self.cfg.debug { println!("$$$$$$$$$$$$$$$$$$$$$$$$ lets do skip ({:?} x {:?}) || stats : [{:?}]", (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed)); }
+if self.cfg.debug { println!("$$$$$$$$$$$$$$$$$$$$$$$$ lets do skip ({:?} x {:?}) || stats : [{:?}] add_prob:{:?}", (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed), add_prob); }
         return false
     }
     fn notify_locked_repro(&mut self, state: &StateInfo, call: &mut Call) -> bool {
@@ -159,7 +154,7 @@ if self.cfg.debug { println!("pocind") }
             // though when we use splice or insert, we messing with this
         // aka environnment of origina POC is changed
 if self.cfg.debug { println!("#sid (object:{:?}; bananaq.len={:?}) stop or forcese  [{:?}/{:?}] -> <{:?}][{:?}> last_call {:?}", state.uid(), bananaq::len(&state.bananaq).unwrap(), self.poc_ind, self.poc.info.calls_count, u64::from(state.id), poc.info.sid, self.poc.is_last_call(1 + self.poc_ind)) }
-            return self.stop_or_force(&state.bananaq, &poc, call.n_attempts(), 0.5)
+            return self.stop_or_force(call.n_attempts(), 0.7)
 //            return false
         }
 
@@ -179,8 +174,6 @@ if self.cfg.debug { println!("uid : {:?} x {:?} \n\t FULL UID MAP {:?}", state.u
 if self.cfg.debug { println!("#levels {:?} stop or force in bananaq#{:X}", (state.level, poc.info.level), bananaq::qid(&state.bananaq).unwrap()) }
 
             return self.stop_or_force(
-                &state.bananaq, 
-                &poc, 
                 call.n_attempts(), 
                 if 0 != poc.info.level { 0.5 } else { 0.0 });
         }
@@ -192,7 +185,7 @@ if self.cfg.debug { println!("#levels {:?} stop or force in bananaq#{:X}", (stat
 if self.cfg.debug { println!("#cid stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).unwrap()) }
 
 //for _ in 0..1000 { println!("cid with levels {:?}", (poc.info.level, state.level, poc.info.cid, call.id(), self.poc_ind)) }
-            return self.stop_or_force(&state.bananaq, &poc, call.n_attempts(), 0.0)//seems wanted call is dead ??
+            return self.stop_or_force(call.n_attempts(), 0.0)//seems wanted call is dead ??
         }
         self.n_attempts = 0;
         self.passed += 1;
@@ -200,7 +193,7 @@ if self.cfg.debug { println!("#cid stop or force in bananaq#{:X}", bananaq::qid(
 
 if self.cfg.debug { println!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).unwrap()) }
 
-            return self.stop_or_force(&state.bananaq, &poc, call.n_attempts(), 1.0)//try add something
+            return self.stop_or_force(call.n_attempts(), 1.0)//try add something
         }
 
         if self.ctor_done { // OK, AFL did good job if ctor
@@ -245,8 +238,8 @@ if self.cfg.debug { println!("STOP2") }
         if self.resolve_fid(&poc.fid, state.fd.data()) {
             return true
         }
-        // how this happens, probably better to check and solve ??
-if self.cfg.debug { println!("STOP3") }
+// could happen once ctor StateIds/StateTableId < 0x10
+if self.cfg.debug { loop { println!("STOP3") } } // this should not happen
         bananaq::stop(&state.bananaq).unwrap();
         println!("[BFL] Overlapping fid at runtime: {:?} != {:?}\n\t=> {:?}", 
             state.fd.data(), self.fid_lookup[&poc.fid], poc.fid);
@@ -270,26 +263,7 @@ if self.cfg.debug { println!("STOP3") }
         true
     }
 
-    // this todo rethink what i wanted to do lol ..
-    // in fact, just to balance ratio of ctors vs others
-    // not to prevail each other too much
-    fn broken_fuzzy_ratio(&self, fd: &Fd) -> bool {
-        if self.ctors_cnt + self.calls_cnt < self.cfg.warmup_cnt {
-            return false
-        }
-        if fd.is_invalid() && self.ctors_cnt * self.cfg.ctor_max_ratio > self.calls_cnt {
-            return false
-        }
-        if !fd.is_invalid() && self.ctors_cnt * self.cfg.ctor_min_ratio < self.calls_cnt {
-            return false
-        }
-        true
-    }
-
     pub fn notify_locked_fuzzy(&mut self, state: &StateInfo, call: &mut Call) -> bool {
-//        if self.broken_fuzzy_ratio(&state.fd) {
-//            return false
-//        }
 
         if !self.poc.do_gen() && !self.poc.is_last_call(self.poc_ind) {
 if self.cfg.debug { println!("STOP4") }
@@ -378,9 +352,10 @@ if self.cfg.debug { println!("refusing ctor") }
 
     pub fn notify_locked(&mut self, state: &StateInfo, call: &mut Call) -> bool {
         if call.id().is_default() {
+            assert!(0 != state.level);
             return true
         }
-        if !bananaq::is_active(&state).unwrap() {
+        if !bananaq::is_active(&state.bananaq).unwrap() {
             return false
         }
 //println!("locked notify all");

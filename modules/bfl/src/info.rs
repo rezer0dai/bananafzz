@@ -10,10 +10,6 @@ pub struct BananizedFuzzyLoopConfig {
     pub max_inserts: usize,
     pub max_allowed_wait_count_per_call: usize,
     pub is_strict_repro: bool,
-
-    pub warmup_cnt: usize,
-    pub ctor_min_ratio: usize,
-    pub ctor_max_ratio: usize,
 }
 
 #[derive(Debug, Clone, Copy)]

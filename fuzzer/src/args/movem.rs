@@ -63,11 +63,11 @@ impl MarioComposite for ArgComposite {
             7, 
             "move-mario-keys", 
             vec![
-                (0, Box::new(Bounded::one(3u8..=0xf0))),//right
-                (1, Box::new(Bounded::one(0u8..=10))),//left
+                (0, Box::new(Bounded::one(3u8..=20))),//right
+                (1, Box::new(Bounded::one(0u8..=4))),//left
                 (2, Box::new(Bfl::new(Bounded::one(0u8..=3)))),//climb
                 (3, Box::new(Bfl::new(Bounded::one(0u8..=3)))),//slide
-                (4, Box::new(Bounded::one(0u8..=0xf0))),//jump
+                (4, Box::new(Bounded::one(0u8..=10))),//jump
                 (5, Box::new(Bfl::new(Bounded::one(0u8..=3)))),//fire
 //                    (5, Box::new(Flag::new(0, 1u8))),//fire
 //                    (6, Box::new(Bounded::one(0u8..=10))),//start

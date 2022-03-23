@@ -17,6 +17,7 @@ use core::state::{state::StateInfo, id::StateTableId};
 use core::exec::fd_info::Fd;
 use core::banana::bananaq::FuzzyQ;
 
+#[allow(improper_ctypes)]
 extern "C" {
     pub fn push_state(bananaq: &Weak<FuzzyQ>, state: StateTableId, fd: &Fd);
 }

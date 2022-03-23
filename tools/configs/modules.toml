@@ -1,16 +1,13 @@
-online = ["liblimiter", "libsyncer", "libraceunlock", "libsmb", "libbfl"]#, "libdebug"]#"libfilter"] "libpoclog",
+online = ["liblimiter", "libsyncer", "libraceunlock", "libbfl"]#, "libdebug"]#"libfilter"] "libpoclog",
 
 [core.bfl]
 magic = 66
 debug = true#false#
-max_inserts = 20
+max_inserts = 7
 max_allowed_wait_count_per_call = 66#200#888
 is_strict_repro = true
 shmem = 0
 pocmem = 0
-warmup_cnt = 0
-ctor_min_ratio = 0
-ctor_max_ratio = 0
 
 [core.debug]
 noisy = true#false#

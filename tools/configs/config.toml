@@ -6,13 +6,15 @@ max_queue_size = 6#7
 ratio = 3
 
 dead_call = 0.0
-state_update_freq = 2
-singlethread = true#false#
-active_seconds = 1
-push_sleep = 0#222
-new_limit = 3000
-dup_limit = 3000
-after_creation_sleep = 0#100
-push_count = 33
-rnd_data_to_pattern = false
 afl_fix_ratio = 1.0
+
+new_limit = 1000
+dup_limit = 1000
+
+active_time = 1000
+push_sleep = 50
+after_creation_sleep = 0#100
+
+push_count = 0 # not used with SMB
+
+rnd_data_to_pattern = false # not used with SMB

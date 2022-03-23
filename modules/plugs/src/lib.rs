@@ -11,9 +11,7 @@ extern crate generic;
 use std::io;
 
 extern crate core;
-use core::exec::fd_info::Fd;
 use core::banana::observer::{ICallObserver, IStateObserver};
-use core::state::id::StateTableId;
 
 extern crate libsyncer;
 

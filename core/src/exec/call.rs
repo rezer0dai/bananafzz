@@ -8,7 +8,6 @@ use std::sync::Weak;
 
 use super::id::CallTableId;
 use super::fd_info::CallInfo;
-use config::FZZCONFIG;
 
 /// will describle (sys)call ( or other mechanism api/io .. )
 pub struct Call {
@@ -208,7 +207,9 @@ impl Call {
     pub fn allowed(&self) -> usize { self.allowed }
     pub fn success(&self) -> usize { self.success }
     pub fn ok(&self) -> bool { self.einfo.success() }
-    pub fn dead(&self) -> bool { FZZCONFIG.dead_call > (1 + self.success) as f64 / (1 + self.allowed) as f64 }//from config!!
+    pub fn dead(&self, dead_ratio: f64) -> bool { 
+        dead_ratio > (1 + self.success) as f64 / (1 + self.allowed) as f64 
+    }
     pub fn einfo(&self) -> &[u8] { &self.einfo.extra_info() }
     pub fn kin(&self) -> usize { self.einfo.kin() }
     pub fn n_attempts(&self) -> usize { self.n_attempts }

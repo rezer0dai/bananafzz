@@ -7,17 +7,18 @@ use common::table::*;
 
 use calls::dummy::DummyExec;
 
-use calls::ko::GameOver;
 use calls::load::LoadPos;
 use calls::movem::MoveMario;
 
 use args::smb2::{Move, FD_SIZE};
 
-use core::banana::looper::FuzzyState;
-
 use std::sync::Weak;
-use core::banana::bananaq;
 use core::banana::bananaq::FuzzyQ;
+
+#[allow(improper_ctypes)]
+extern "C" {
+    pub fn push_state(bananaq: &Weak<FuzzyQ>, state: StateTableId, fd: &Fd);
+}
 
 pub struct CoinsState {
     pub state: State,
@@ -34,16 +35,19 @@ impl CoinsState {
     }
 
     pub fn coins(banana: Weak<FuzzyQ>, fd: &[u8]) {
-        FuzzyState::fuzz(Box::new(
-            CoinsState::alert(banana, fd, StateIds::FdCoins.into())));
+        unsafe {
+            push_state(&banana, StateIds::FdCoins.into(), &Fd::new(fd))
+        }
     }
     pub fn brick(banana: Weak<FuzzyQ>, fd: &[u8]) {
-        FuzzyState::fuzz(Box::new(
-            CoinsState::alert(banana, fd, StateIds::FdBrick.into())));
+        unsafe {
+            push_state(&banana, StateIds::FdBrick.into(), &Fd::new(fd))
+        }
     }
     pub fn qboxs(banana: Weak<FuzzyQ>, fd: &[u8]) {
-        FuzzyState::fuzz(Box::new(
-            CoinsState::alert(banana, fd, StateIds::FdQBoxs.into())));
+        unsafe {
+            push_state(&banana, StateIds::FdQBoxs.into(), &Fd::new(fd))
+        }
     }
 
     pub fn alert(banana: Weak<FuzzyQ>, fd: &[u8], sid: StateTableId) -> CoinsState {
@@ -60,7 +64,6 @@ impl CoinsState {
                 sid,
                 FD_SIZE,
                 20,
-                42,
                 vec![[0, 1], [0, 1], [-1, 1], [-2, -2]],
                 CoinsState::init_calltable(),
                 Call::succ()),
@@ -70,7 +73,7 @@ impl CoinsState {
 
     fn init_calltable() -> Vec< Vec<Call> > {
         vec![
-            vec![ Call::succ() ],
+            vec![ Call::ok_ctor() ],
             vec![ Call::is_active() ],
             vec![ Call::eval_pos() ],
             vec![ Call::move_mario() ]]

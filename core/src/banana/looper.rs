@@ -3,7 +3,6 @@ use super::bananaq::{
     FuzzyQ,
 };
 use state::state::IFuzzyObj;
-use config::FZZCONFIG;
 
 extern crate rand;
 use rand::Rng;
@@ -64,7 +63,7 @@ impl FuzzyState {
 
             if !racer {
                 thread::sleep(time::Duration::from_millis(
-                    rand::thread_rng().gen_range(0..=FZZCONFIG.after_creation_sleep)));
+                    rand::thread_rng().gen_range(0..=bananaq::config(&banana)?.after_creation_sleep)));
             }
 
             for i in 0u16.. {//ok we want panic if we overdo it, as 0xFFFF is not reasonable fuzzing for any object ..

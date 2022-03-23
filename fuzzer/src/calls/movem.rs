@@ -5,9 +5,8 @@ use self::core::exec::fd_info::CallInfo;
 use self::core::generator::arg::Arg;
 
 extern crate api;
-use self::api::leafs::deref_leaf::*;
 use self::api::leafs::shared_leaf::Shared;
-use self::api::leafs::random_leaf::RndData;
+//use self::api::leafs::random_leaf::RndData;
 
 use common::table::*;
 
@@ -81,7 +80,7 @@ println!("ENEMY {mid} sucess? {:?}; on the move! {:?} <= {:?}", 0 == pos.data()[
 let mid: Move = mid.into();
 if true {//Move::Mario != mid {
 if ok {
-    generic::append_file_raw_with_limit("hits.txt", format!("${mid:?}{after_x:?}->{:?};\n", (cash == pos.data()[Move::Cash as usize - POS_START], power != pos.data()[Move::Power as usize - POS_START])).as_bytes(), 1000);
+//    generic::append_file_raw_with_limit("hits.txt", format!("${mid:?}{after_x:?}->{:?};\n", (cash == pos.data()[Move::Cash as usize - POS_START], power != pos.data()[Move::Power as usize - POS_START])).as_bytes(), 1000);
 }
 println!("[{:?}] CASH++? {ok} : -> {:?} x {:?} x {:?} Y<{:?}>Y <{:?} .. {:?}> // {:?}", mid, after_x, target_x, before_x, (before_y, after_y), pos.data()[9 - POS_START], (after_x-3..after_x+3).contains(&target_x), (move_r, move_l, move_x));
 }

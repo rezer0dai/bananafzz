@@ -19,9 +19,7 @@ use args::smb2::{Move, FD_SIZE};
 use core::banana::looper::FuzzyState;
 
 use std::sync::Weak;
-use core::banana::bananaq;
 use core::banana::bananaq::FuzzyQ;
-use core::state::id::StateTableId;
 
 use super::super::coins::state::*;
 
@@ -42,7 +40,8 @@ pub struct MarioState {
 impl MarioState {
     pub fn do_init(&mut self) -> Fd {
         panic!("dupers only");
-        Fd::new(&[self.shared[0]; FD_SIZE])
+        //and this actually we dont want in general to be the case, NEVER
+        //especially for BFL scenario :)
     }
 
     fn enemies(&mut self) -> Result<(), String> {
@@ -104,7 +103,6 @@ println!("ENEMY SPOTED {e:?}");
                 mid.into(),
                 &Fd::new(&[shared[0]; FD_SIZE]),
                 333,
-                66,
                 vec![[0, 1], [0, 1], [-1, -1]],
                 MarioState::init_calltable(),
                 Call::game_over()),
@@ -126,7 +124,6 @@ println!("ENEMY SPOTED {e:?}");
                 mid.into(),
                 &Fd::new(&[shared[0]; FD_SIZE]),
                 5,
-                0x42,
                 vec![[0, 1], [0, 1], [-1, -1]],
                 MarioState::init_calltable(),
                 Call::succ()),

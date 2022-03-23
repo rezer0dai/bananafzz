@@ -17,16 +17,11 @@ use std::{
     thread,
     time
 };
-use std::sync::mpsc::{
-    Sender,
-    Receiver,
-};
-use std::sync::mpsc;
 
 extern crate plugs;
-use plugs::{Observer, Plugins};
+use plugs::Observer;
 
-use core::config::FZZCONFIG;
+use core::config::FuzzyConfig;
 use core::state::{state::IFuzzyObj, id::StateTableId};
 use core::exec::fd_info::Fd;
 use core::banana::looper::FuzzyState;
@@ -44,7 +39,6 @@ use states::coins::state::CoinsState;
 
 extern crate libbfl;
 use libbfl::{
-    KNOWLEDGE_MAP,
     info::PocDataHeader, 
     poc::{REPROED, POCDROP},
     shmem::ShmemData,
@@ -64,7 +58,9 @@ pub fn push_state(bananaq: &Weak<FuzzyQ>, id: StateTableId, fd: &Fd) {
         if !fuzzy_obj.is_online() {
             return
         }
-        FuzzyState::fuzz(fuzzy_obj);
+        if let Err(msg) = FuzzyState::fuzz(fuzzy_obj) {
+            println!("[bananaq] no more pushing objects on bananaq#? {msg}");
+        }
     }
 }
 
@@ -78,9 +74,9 @@ fn push_fuzz(
                 Arc::downgrade(&Arc::clone(banana)))))
 }
 
-fn load_plugins(banana: &mut Arc<FuzzyQ>, mut plugins: Vec<Observer>) {
+fn load_plugins(banana: &mut Arc<FuzzyQ>, noisy: bool, mut plugins: Vec<Observer>) {
     for plugin in plugins.iter_mut() {
-        if FZZCONFIG.noisy {
+        if noisy {
             plugin.stats();
         }
 
@@ -103,6 +99,7 @@ extern "C" {
 
 unsafe fn exec_input(
     bijon: bool, 
+    fzzcfg: &FuzzyConfig,
     poc_mem: *mut u8, 
     data: *const u8, 
     size: usize
@@ -115,7 +112,8 @@ unsafe fn exec_input(
         return Err(format!("[bananafzz] cLLVMFuzzerTestOneInput error"))
     }
 
-    let mut banana = Arc::new(RwLock::new(queue::FuzzyQ::new()));
+    let mut banana = Arc::new(RwLock::new(queue::FuzzyQ::new(
+                fzzcfg.clone()))); 
 
     println!("TESTONE INPUT TO BANANA {:X}", size);
 
@@ -124,15 +122,14 @@ unsafe fn exec_input(
         Err(e) => panic!("[BFL] config err {}", e)
     };
 
-    let bfl = if let Some(ref mut bfl) = cfg.core.bfl {
+    if let Some(ref mut bfl) = cfg.core.bfl {
         bfl.shmem = std::mem::transmute(data);
         bfl.pocmem = std::mem::transmute(poc_mem);
 //println!("[BFL] changed config : {:X} and {:X}", bfl.shmem, bfl.pocmem);
-        bfl
     } else { panic!("[BFL] unable to access bfl config") };
 
     let plugins = plugs::Plugins::new(cfg);
-    load_plugins(&mut banana, plugins.observers);
+    load_plugins(&mut banana, fzzcfg.noisy, plugins.observers);
 
     if bijon {// go for feedback coverage
         bananaq::attach_call_observer(&mut banana, libbijon::observer())
@@ -141,8 +138,11 @@ unsafe fn exec_input(
     println!("PLUGINS LOEADED");
 
     reset_coins();
-    let out = push_fuzz(&banana)?;
-    if let Err(msg) = out.join() {
+    let mario = push_fuzz(&banana)?;
+
+    wait_for_fuzzing_over(&Arc::downgrade(&banana), &fzzcfg);
+
+    if let Err(msg) = mario.join() {
         println!("[fuzzing message] : <{:?}>", msg);
     }
     cLLVMFuzzerTestJoin();
@@ -151,17 +151,37 @@ unsafe fn exec_input(
     Ok(())
 }
 
+fn wait_for_fuzzing_over(bananaq: &Weak<FuzzyQ>, fzzcfg: &FuzzyConfig) {
+    for _ in 0..fzzcfg.active_time / fzzcfg.push_sleep {
+        match bananaq::is_active(bananaq) {
+            Ok(is_active) => if !is_active {
+                break 
+            },
+            Err(msg) => {
+                println!("[bananaq] over, go for next input, banana#msg : <{}>", msg);
+                break
+            }
+        }
+        thread::sleep(time::Duration::from_millis(
+                fzzcfg.push_sleep));
+    }
+    if let Err(msg) = bananaq::stop(bananaq) {
+        println!("[bananaq] done waiting, queue stoped, banana#msg : <{}>", msg);
+    }
+}
 
 use std::sync::RwLockWriteGuard;
+
+#[allow(improper_ctypes)]
 extern "C" {
     fn banana_feedback<'a>() -> RwLockWriteGuard<'a, Vec<Vec<u8>>>;
 }
 
 //we need this mut to be able toupdate poc call desriptions, mainly KIN members
+#[allow(non_snake_case)]
 pub unsafe fn LLVMFuzzerTestOneInput(poc_mem: *mut u8, data: *const u8, size: usize) -> i32 {
 //generic::append_file_raw("info.txt", "{".as_bytes());
  //   println!("TESTONE INPUT TO BANANA {:X}", size);
-    KNOWLEDGE_MAP[0] = 0;
     POCDROP = false;
 
     if 0 == size {
@@ -175,25 +195,31 @@ pub unsafe fn LLVMFuzzerTestOneInput(poc_mem: *mut u8, data: *const u8, size: us
 
     let do_gen = !0 != header.split_at || !0 != header.insert_ind;
 
-    if FZZCONFIG.noisy {
+    let fzzcfg = FuzzyConfig::new();
+
+    if fzzcfg.noisy {
         print!("\n$N*I({size})->PID:<{:?}>//{:?}$\n bakctrace : {:?}", std::process::id(), header.insert_ind, Backtrace::force_capture());
     }
-generic::append_file_raw_with_limit("alive.txt", format!("${size}").as_bytes(), 1000);
 
-    let mut msg = match exec_input(!do_gen, poc_mem, data, size) {
+    let mut msg = match exec_input(!do_gen, &fzzcfg, poc_mem, data, size) {
         Err(e) => e,
         _ => format!("Fuzzing was done OK"),
     };
 
     if REPROED && POCDROP {
         assert!(do_gen);
-        let poc_size = ShmemData::new(
-            header.magic,
-            std::mem::transmute(poc_mem)).head().total_size;
-        msg = match exec_input(false, poc_mem, poc_mem, poc_size) {
-            Err(e) => e,
-            _ => format!("Fuzzing was done OK"),
-        };
+        for _ in 0..10 {
+            let poc_size = ShmemData::new(
+                header.magic,
+                std::mem::transmute(poc_mem)).head().total_size;
+            msg = match exec_input(false, &fzzcfg, poc_mem, poc_mem, poc_size) {
+                Err(e) => e,
+                _ => format!("Fuzzing was done OK"),
+            };
+            if REPROED {
+                break
+            }
+        }
 
 //        while !REPROED { println!("YES IS THAT HAPPENING !! <{msg}> |{} vs {}|", poc_size, size) }
 
@@ -209,7 +235,7 @@ generic::append_file_raw_with_limit("alive.txt", format!("${size}").as_bytes(), 
     }
 
     let reproed = REPROED;
-    println!("INPUT OUT : <{msg}>");
+    println!("INPUT OUT : <{msg}> stats::|{:?}|", (do_gen, reproed, POCDROP));
 
     if !do_gen && !reproed {// if do_gen bijon is offline
         let n_failed_to_repro = banana_feedback()
@@ -219,7 +245,7 @@ generic::append_file_raw_with_limit("alive.txt", format!("${size}").as_bytes(), 
     }
 //    let reproed = REPROED;
 
-    if FZZCONFIG.noisy {
+    if fzzcfg.noisy {
         if do_gen && reproed && POCDROP {
 for _ in 0..1000 {print!("I({:?}/{:?}=>{:?})", 
             header.insert_ind, 
@@ -249,14 +275,11 @@ println!("GOT NEW STUFF! {size}");
 
 
 pub unsafe fn libafl_targets_libfuzzer_init(_argc: *const i32, _argv: *const *const *const u8) -> i32 {
-    if FZZCONFIG.noisy {
-        println!("{}", FZZCONFIG.version);
+    let fzzcfg = FuzzyConfig::new();
+    if fzzcfg.noisy {
+        println!("{}", fzzcfg.version);
     }
 //generic::append_file_raw("info.txt", "\ninit".as_bytes());
 //    panic!("OK RESOLVED EXTERNS TO BANANA");
     cLLVMFuzzerInitialize(std::mem::transmute(0usize), std::mem::transmute(0usize))
-}
-
-pub unsafe fn feedback_maps() -> &'static mut[u8] {
-    &mut KNOWLEDGE_MAP
 }

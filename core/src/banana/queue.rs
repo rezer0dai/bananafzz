@@ -17,7 +17,7 @@ use exec::fd_info::Fd;
 use state::id::StateTableId;
 use state::state::StateInfo;
 
-use config::FZZCONFIG;
+use config::FuzzyConfig;
 
 /// central structure(queue) for fuzzing - internal fuzzer manager/banana
 ///
@@ -31,8 +31,11 @@ pub struct FuzzyQ {
     ///
     /// - duplicate resolving
     /// - callback forwarding
+    pub(crate) cfg: FuzzyConfig,
+
     qid: u64,
     active: Rc<RwLock<bool>>,
+
     states: HashMap< thread::ThreadId, StateInfo >,
     pub(crate) observers_state: Vec< Box<dyn IStateObserver> >,
     pub(crate) observers_call: Vec< Box<dyn ICallObserver> >,
@@ -42,10 +45,13 @@ unsafe impl Send for FuzzyQ {}
 unsafe impl Sync for FuzzyQ {}
 
 impl FuzzyQ {
-    pub fn new() -> FuzzyQ {
+    pub fn new(config: FuzzyConfig) -> FuzzyQ {
         FuzzyQ {
+            cfg : config,
+
             qid : rand::thread_rng().gen(),
             active : Rc::new(RwLock::new(true)),
+
             states : HashMap::new(),
             observers_state : Vec::new(),
             observers_call : Vec::new(),
@@ -116,7 +122,7 @@ impl FuzzyQ {
             .iter()
             .filter(|&(_, ref state)| (state.fd.equals(&info.fd) && (state.id.clone() & info.id.clone())))
             .count();
-        if dups > FZZCONFIG.max_racers_count {
+        if dups > self.cfg.max_racers_count {
             return false
         }
         self.observers_state
@@ -135,7 +141,7 @@ impl FuzzyQ {
             .count();
 
         // forcing at least 1 object of its kind in queue is not necessary what we want, limit config expresivness
-        if self.states.len() > FZZCONFIG.max_queue_size {
+        if self.states.len() > self.cfg.max_queue_size {
             return false//0 != same_kind
         }
 
@@ -146,7 +152,7 @@ impl FuzzyQ {
         //ok seems strict check on all siblings is preferable!!
        
         // well rust, overflows are handled, kind of overkill geting here overlow checks - implmenting fuzzer not OS
-        if same_kind * FZZCONFIG.ratio > FZZCONFIG.max_queue_size * 1 {
+        if same_kind * self.cfg.ratio > self.cfg.max_queue_size * 1 {
             return false
         }
 

@@ -11,8 +11,6 @@ use rand::Rng;
 use banana::bananaq;
 use banana::bananaq::FuzzyQ;
 
-use config::FZZCONFIG;
-
 use exec::call::Call;
 use exec::fd_info::Fd;
 use super::id::StateTableId;
@@ -97,8 +95,7 @@ pub struct State {
     info: StateInfo,
     /// hardcoded limit per object how many iteration of fuzzing to perform on it - then close
     limit: usize,
-    /// how many times to stay at level if call is declined to call ( observer or fail )
-    n_failed_notify_allowed: usize,
+    dead_ratio: f64,
     /// one of the main features of state, we can here calibrate behaviour which (set of)function should be called when
     slopes: Vec<[isize; 2]>,
     /// we need to preserve state, which level and which call is fuzzed
@@ -174,12 +171,14 @@ impl State {
         let bananaq = &self.info.bananaq;
 
         let mut i = 0;
-//        while i <= self.n_failed_notify_allowed {
-        while bananaq::is_active(&self.info)? {
+        for _ in 0u32.. {
             i += 1;
+            if !bananaq::is_active(&self.info.bananaq())? {
+                break
+            }
 
             self.ccache.1 = rand::thread_rng().gen_range(0..self.groups[self.ccache.0].len());
-            if !self.call_view().dead() 
+            if !self.call_view().dead(self.dead_ratio) 
                 && self.groups[self.ccache.0][self.ccache.1]
                     .do_call(&bananaq, &fd.data(), shared) 
             { return Ok(()) }
@@ -188,7 +187,7 @@ impl State {
 
             if self.groups[self.ccache.0]
                 .iter()
-                .any(|ref call| !call.dead()) { continue }
+                .any(|ref call| !call.dead(self.dead_ratio)) { continue }
             dead = true;
             break 
         }
@@ -255,13 +254,13 @@ while usize::MAX == self.info.level { println!("DTOR CALLED UPDATE CALLED TOO!!"
                     self.info.total, self.limit))
         }
 
-        if !call.dead() {
+        if !call.dead(self.dead_ratio) {
             return Ok(())
         }
 
         let dead_calls = self.groups[self.ccache.0]
             .iter()
-            .filter(|&call| call.dead())
+            .filter(|&call| call.dead(self.dead_ratio))
             .map(|call| format!("<{}>", call.name()))
             .collect::<Vec<String>>();
 
@@ -323,7 +322,6 @@ while usize::MAX == self.info.level { println!("DTOR CALLED UPDATE CALLED TOO!!"
         id: StateTableId,
         fd_size: usize,
         limit: usize,
-        n_failed_notify_allowed: usize,
         slopes: Vec<[isize; 2]>,
         groups: Vec< Vec<Call> >,
         dtor: Call
@@ -339,6 +337,8 @@ while usize::MAX == self.info.level { println!("DTOR CALLED UPDATE CALLED TOO!!"
             panic!("one of the group for {} is oversized!", name);
         }
 
+        let fzzconfig = bananaq::config(&bananaq).unwrap();
+
         State {
             info : StateInfo {
                 bananaq : bananaq,
@@ -350,8 +350,8 @@ while usize::MAX == self.info.level { println!("DTOR CALLED UPDATE CALLED TOO!!"
                 level : 0,
                 finished : false,
             },
-            limit : min(FZZCONFIG.new_limit, limit),
-            n_failed_notify_allowed: n_failed_notify_allowed,
+            dead_ratio : fzzconfig.dead_call,
+            limit : min(fzzconfig.new_limit, limit),
             slopes : slopes,
             groups : groups,
             dtor: dtor,
@@ -371,7 +371,6 @@ while usize::MAX == self.info.level { println!("DTOR CALLED UPDATE CALLED TOO!!"
         id: StateTableId,
         fd: &Fd,
         limit: usize,
-        n_failed_notify_allowed: usize,
         slopes: Vec<[isize; 2]>,
         groups: Vec< Vec<Call> >,
         dtor: Call
@@ -387,6 +386,8 @@ while usize::MAX == self.info.level { println!("DTOR CALLED UPDATE CALLED TOO!!"
             panic!("one of the group for {} is oversized!", name);
         }
 
+        let fzzconfig = bananaq::config(&bananaq).unwrap();
+
         let level = slopes[0][1] as usize;
 
         State {
@@ -400,8 +401,8 @@ while usize::MAX == self.info.level { println!("DTOR CALLED UPDATE CALLED TOO!!"
                 level : level,
                 finished : false,
             },
-            limit : min(FZZCONFIG.dup_limit, limit),
-            n_failed_notify_allowed: n_failed_notify_allowed,
+            dead_ratio : fzzconfig.dead_call,
+            limit : min(fzzconfig.dup_limit, limit),
             slopes : slopes,
             groups : groups,
             dtor: dtor,

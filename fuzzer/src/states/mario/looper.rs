@@ -3,8 +3,6 @@ use self::core::state::state::{
     IFuzzyObj,
     State
 };
-use self::core::exec::fd_info::Fd;
-
 use super::state::*;
 
 impl IFuzzyObj for MarioState {

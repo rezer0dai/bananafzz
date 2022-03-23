@@ -1,6 +1,81 @@
-use info::PocDataHeader;
+use rand::thread_rng;
+use rand::prelude::IteratorRandom;
+
+use info::{PocDataHeader, PocCallHeader};
 use poc::PocData;
 
+struct Xid {
+    pid: u64,
+    uid: u64,
+    sid: u64,
+    ind: u64,
+}
+
+impl Xid {
+    fn new(pid: u64, uid: u64, sid: u64, ind: u64) -> Self {
+        Xid { pid: pid, uid: uid, sid: sid, ind: ind }
+    }
+}
+
+fn find_target(
+    pid: u64,
+    xids: &Vec<Xid>, 
+    call: &PocCallHeader
+    ) -> Result<Xid, ()>
+{
+    let mut rng = thread_rng();
+    if let Some(xid) = xids
+        .iter()
+        .filter(|xid| 0 == xid.pid && xid.sid == call.sid)
+        .choose(&mut rng) 
+    {
+        return Ok(Xid::new(pid, call.uid, call.sid, xid.ind))
+    }
+// this should be by default, SMBC is just for testing
+// - we dont want dup only objects!!
+//    return Err(())
+
+    // seems it is DUP by default, maybe force to disable this option in bananafzz
+    Ok(Xid::new(pid, call.uid, call.sid, 1 + xids.len() as u64))
+}
+
+fn resolve_xid(
+    pid: u64,
+    xids: &mut Vec<Xid>, 
+    call: &PocCallHeader
+    ) -> Result<(), ()>
+{
+    if 0 == call.level { // ctor
+        xids.push(Xid::new(pid, call.uid, call.sid, 1 + xids.len() as u64))
+    } // what about dtor ?
+    else if let Some(_) = xids
+        .iter()
+        .rev()
+        .find(|xid| pid == xid.pid && call.uid == xid.uid && call.sid == xid.sid) 
+    { 
+        return Ok(())
+    } else {
+        xids.push(find_target(pid, xids, call)?)
+    }
+    Ok(())
+}
+
+fn adjust_sid(pid: u64, xids: &mut Vec<Xid>, call: &[u8]) -> Result<Vec<u8>, ()> {
+    let mut call_vec = call.to_vec();
+    let call = generic::data_mut_unsafe::<PocCallHeader>(&mut call_vec);
+
+    resolve_xid(pid, xids, call)?;
+
+    call.uid = xids
+        .iter()
+        .rev()
+        .filter(|xid| xid.uid == call.uid && xid.sid == call.sid)
+        .nth(0)
+        .unwrap()
+        .ind;
+
+    Ok(call_vec)
+}
 
 pub fn do_bananized_crossover(
     poc_a: &mut [u8], poc_b: &mut [u8], cross_count: usize,
@@ -27,14 +102,21 @@ pub fn do_bananized_crossover(
 
     let mut poc_o = PocData::new(magic, 0);
 
+    let mut xids = vec![];
     for i in 0..split_at {
-        poc_o.append(poc_a.call(i), poc_a.desc(i).kin);
+        if let Ok(call) = adjust_sid(0, &mut xids, poc_a.call(i)) {
+            poc_o.append(&call, poc_a.desc(i).kin);
+        }
     }
     for i in cross_at..(cross_at+cross_count) {
-        poc_o.append(poc_b.call(i), poc_b.desc(i).kin);
+        if let Ok(call) = adjust_sid(1, &mut xids, poc_b.call(i)) {
+            poc_o.append(&call, poc_b.desc(i).kin);
+        }
     }
     for i in split_at..poc_a.header().calls_count {
-        poc_o.append(poc_a.call(i), poc_a.desc(i).kin);
+        if let Ok(call) = adjust_sid(0, &mut xids, poc_a.call(i)) {
+            poc_o.append(&call, poc_a.desc(i).kin);
+        }
     }
 
     poc_o.craft_poc()

@@ -4,15 +4,17 @@ use super::observer::{
     ICallObserver,
     IStateObserver,
 };
-use exec::call::Call;
+
+use super::queue;
 use super::super::state::id::StateTableId;
 use super::super::exec::fd_info::Fd;
+use super::super::config::FuzzyConfig;
+
+use exec::call::Call;
 use state::state::{IFuzzyObj, StateInfo};
-use super::super::config::FZZCONFIG;
 
 use std::sync::{Arc, Weak, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use super::queue;
 pub type FuzzyQ = RwLock<queue::FuzzyQ>;
 
 fn read_prot<F, T>(banana: &Weak<FuzzyQ>, action: F) -> Result<T, &'static str>
@@ -83,11 +85,14 @@ pub fn ctor_notify<'a>(info: StateInfo) -> bool {
 pub fn get_rnd_fd(banana: &Weak<FuzzyQ>, id: StateTableId) -> Result<Fd, &'static str> {
     read_prot(banana, |banana| banana.get_rnd_fd(id))
 }
-pub fn is_active(info: &StateInfo) -> Result<bool, &'static str> {
-    read_prot(&info.bananaq, |banana| banana.active())
+pub fn is_active(bananaq: &Weak<FuzzyQ>) -> Result<bool, &'static str> {
+    read_prot(bananaq, |banana| banana.active())
+}
+pub fn config(bananaq: &Weak<FuzzyQ>) -> Result<FuzzyConfig, &'static str> {
+    read_prot(bananaq, |banana| banana.cfg.clone())
 }
 pub fn stop(banana: &Weak<FuzzyQ>) -> Result<(), &'static str> {
-    if FZZCONFIG.noisy {
+    if config(banana)?.noisy {
         println!("[bananaq] QUEUE STOP: {:?}", Backtrace::force_capture()
             .frames()
             .iter()

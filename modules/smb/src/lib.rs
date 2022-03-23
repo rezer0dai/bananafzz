@@ -60,7 +60,7 @@ impl ICallObserver for SuperMarioBros2 {
         //we try ( cuze 3==%4 passtrough ) to force to do not only mario
         if 0x100u64 == state.id.into() // classy mario
             && 0 != syncer.target.load(Ordering::SeqCst) // we have non classy inside
-//            && 3 != self.dcount.fetch_add(1, Ordering::Relaxed) % 4 // give chance for the others
+            && 3 != self.dcount.fetch_add(1, Ordering::Relaxed) % 4 // give chance for the others
 //            && 99 != self.dcount.fetch_add(1, Ordering::Relaxed) % 100 // give chance for the others
         { return false }
 /*
@@ -105,7 +105,7 @@ println!("waiting for SMBC2 cool stuff {:?}", self.theone.load(Ordering::SeqCst)
                     .iter()
                     .step_by(2)
                     .enumerate()
-                    .filter(|(i, x)| &0 != *x)
+                    .filter(|(_, x)| &0 != *x)
                     .map(|(i, _)| 2 << i)
                     .fold(0, |acc, t| acc | t),
             Ordering::SeqCst);
@@ -116,7 +116,7 @@ println!("waiting for SMBC2 cool stuff {:?}", self.theone.load(Ordering::SeqCst)
 }
 
 impl IStateObserver for SuperMarioBros2 {
-    fn notify_ctor(&self, state: &StateInfo) -> bool {
+    fn notify_ctor(&self, _state: &StateInfo) -> bool {
         true
     }
 

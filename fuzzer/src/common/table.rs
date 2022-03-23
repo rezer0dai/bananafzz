@@ -47,6 +47,8 @@ pub enum CallIds {
 
     eval_pos,
     is_active,
+
+    ok_ctor = 0x1000,
 }
 impl From<CallTableId> for CallIds {
     fn from(id: CallTableId) -> CallIds {

@@ -36,10 +36,10 @@ pub struct PocData {
 }
 impl PocData {
     pub fn new(magic: usize, addr: usize) -> PocData {
-        let mut shmem = if 0 != addr { 
+        let shmem = if 0 != addr { 
             unsafe { ShmemData::new(magic, addr)}
         } else { ShmemData::new_empty(magic) };
-        let mut info = shmem.head().clone();
+        let info = shmem.head().clone();
 
         let mut poc = if !0 != info.split_at {
             let poc = do_bananized_crossover(
@@ -85,7 +85,7 @@ impl PocData {
             poc.parse_descs();
             poc
         };
-        /*
+
 println!("NEW POC");
 
 for i in 0..poc.info.calls_count {
@@ -95,7 +95,7 @@ println!("? [{i}] Call : {:?}", desc);
     let head = generic::data_const_unsafe::<PocCallHeader>(&shmem.data()[desc.offset..]);
 println!("\n\t?> Header : {:?}", head);
 }
-        */
+
         poc
 
     }
@@ -179,7 +179,7 @@ println!("\n\t?> Header : {:?}", head);
 // by default we want mark all pocs from banana as repro-only, AFL choosing mode afterwards
         if self.descs.len() != self.calls.len() {
             panic!("NOT MADE EQUAL");
-            return vec![]
+//            return vec![]
         }
 
         self.drop_blocked();
@@ -187,7 +187,7 @@ println!("\n\t?> Header : {:?}", head);
         self.info.calls_count = self.calls.len();
         if 0 == self.info.calls_count {
             panic!("NONE CALLS");
-            return vec![]
+//            return vec![]
         }
         self.info.desc_size = self.info.calls_count * size_of::<PocCallDescription>();
         self.info.insert_ind = !0; 
@@ -231,18 +231,29 @@ println!("CRAFT POC => {:?} x {:?}", self.calls.len(), self.runtime.len());
                     call.to_vec()
                 })
                 .collect::<Vec<u8>>());
-            /*
-if self.info.calls_count > 1 {
-println!("[{:?}]<{:?}>", self.info.calls_count, &data[self.descs[self.info.calls_count-2].offset..]);
-}
-println!("[{:?}]<{:?}>", self.info.calls_count, &data[self.descs[self.info.calls_count-1].offset..]);
-
-unsafe {
+/* 
+unsafe {//lets sanitize
     println!("\n\n DOUBLE CHECK!!");
 let poc = PocData::new(66, std::mem::transmute(data.as_ptr()));
     println!("\n\n CHECKED!!");
+
+//lets do sanity checks!!
+if self.info.total_size != data.len() { return vec![] }
+for i in 0..poc.info.calls_count {
+    let desc = poc.desc(i);
+    if desc.offset > poc.shmem.data().len() {
+        loop { println!("BAD POC#1") }
+        return vec![]
+    }
+    let head = generic::data_const_unsafe::<PocCallHeader>(&poc.shmem.data()[desc.offset..]);
+    if head.len != desc.size {
+        loop { println!("BAD POC#2") }
+        return vec![]
+    }
 }
-        */
+
+}
+*/
         data
     }
 
@@ -261,10 +272,6 @@ println!("POC0");
     }
     pub fn is_last_call(&self, ind: usize) -> bool {
         return ind == self.info.calls_count;
-        if 0 == self.info.calls_count {
-            return false
-        }//exception for generation of first entry
-        !0 == self.info.insert_ind || self.info.calls_count == self.info.insert_ind
     }
 //write to shared memory - pocout
     pub fn share(&mut self, addr: usize) -> bool {

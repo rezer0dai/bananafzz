@@ -15,9 +15,9 @@ use std::{
 };
 
 extern crate plugs;
-use plugs::{Observer, Plugins};
+use plugs::Observer;
 
-use core::config::FZZCONFIG;
+use core::config::FuzzyConfig;
 use core::state::id::StateTableId;
 use core::state::state::IFuzzyObj;
 use core::exec::fd_info::Fd;
@@ -50,13 +50,15 @@ pub fn push_state(bananaq: &Weak<FuzzyQ>, id: StateTableId, fd: &Fd) {
         if !fuzzy_obj.is_online() {
             return
         }
-        FuzzyState::fuzz(fuzzy_obj);
+        if let Err(msg) = FuzzyState::fuzz(fuzzy_obj) {
+            println!("[bananaq] no more push to bananaq#? {msg:?}")
+        }
     }
 }
 
-fn load_plugins(banana: &mut Arc<FuzzyQ>, mut plugins: Vec<Observer>) {
+fn load_plugins(banana: &mut Arc<FuzzyQ>, mut plugins: Vec<Observer>, noisy: bool) {
     for plugin in plugins.iter_mut() {
-        if FZZCONFIG.noisy {
+        if noisy {
             plugin.stats();
         }
 
@@ -69,10 +71,8 @@ fn load_plugins(banana: &mut Arc<FuzzyQ>, mut plugins: Vec<Observer>) {
         //store here reloaders!!
     }
 }
-pub fn LLVMFuzzerTestOneInput_mut(
+pub fn push_fuzz(
     banana: &Arc<FuzzyQ>, 
-    data: *mut u8, 
-    size: usize
     ) -> Result< std::thread::JoinHandle< Result<(), String> >, &'static str > 
 {
     FuzzyState::fuzz(
@@ -85,9 +85,17 @@ extern "C" {
     fn reset_coins();
 }
 
-//we need this mut to be able toupdate poc call desriptions, mainly KIN members
-pub unsafe fn LLVMFuzzerTestOneInput(poc_mem: *mut u8, data: *const u8, size: usize) -> Result<(), String> {
-    let mut banana = Arc::new(RwLock::new(queue::FuzzyQ::new()));
+#[allow(non_snake_case)]
+pub unsafe fn LLVMFuzzerTestOneInput(
+    fzzcfg: &FuzzyConfig,
+    poc_mem: *mut u8, 
+    data: *const u8, 
+    size: usize
+    ) -> Result<(), String> 
+{
+    let mut banana = Arc::new(RwLock::new(queue::FuzzyQ::new(
+                fzzcfg.clone()
+                )));
 
     println!("[BANANQ#{:X}] TESTONE INPUT TO BANANA {:X}", bananaq::qid(&Arc::downgrade(&banana)).unwrap(), size);
 
@@ -96,26 +104,22 @@ pub unsafe fn LLVMFuzzerTestOneInput(poc_mem: *mut u8, data: *const u8, size: us
         Err(e) => panic!("[BFL] config err {}", e)
     };
 
-    let bfl = if let Some(ref mut bfl) = cfg.core.bfl {
+    if let Some(ref mut bfl) = cfg.core.bfl {
         bfl.shmem = std::mem::transmute(data);
         bfl.pocmem = std::mem::transmute(poc_mem);
 //println!("[BFL] changed config : {:X} and {:X}", bfl.shmem, bfl.pocmem);
-        bfl
     } else { panic!("[BFL] unable to access bfl config") };
 
     let plugins = plugs::Plugins::new(cfg);
-    load_plugins(&mut banana, plugins.observers);
+    load_plugins(&mut banana, plugins.observers, fzzcfg.noisy);
 
     println!("PLUGINS LOEADED");
 
     reset_coins();
-    let out = LLVMFuzzerTestOneInput_mut(&banana, std::mem::transmute(data), size)?;
-    if let Err(msg) = out.join() {
+    let out = push_fuzz(&banana);
+    if let Err(msg) = out?.join() {
         println!("[fuzzing message] : <{:?}>", msg);
     }
-    let alive = Arc::downgrade(&banana);
-//println!("going to DROP");
-//    banana.write().unwrap().stop();
 
     println!("QUEUE FINISHED");
     Ok(())
@@ -124,8 +128,10 @@ pub unsafe fn LLVMFuzzerTestOneInput(poc_mem: *mut u8, data: *const u8, size: us
 pub fn main() {
     println!("OK RESOLVED EXTERNS TO BANANA");
 
-    if FZZCONFIG.noisy {
-        println!("{}", FZZCONFIG.version);
+    let fzzcfg = FuzzyConfig::new();
+
+    if fzzcfg.noisy {
+        println!("{}", fzzcfg.version);
     }
 //    panic!("OK RESOLVED EXTERNS TO BANANA");
 
@@ -135,7 +141,8 @@ pub fn main() {
     generic::data_mut_unsafe::<PocDataHeader>(&mut poc).split_at = !0;
 // create dummy pocjust header
 
-    let mut counter = 0;
+//    let mut counter = 0;
+    let counter = 0;
     loop {
 /*
         counter += 1;
@@ -174,7 +181,7 @@ println!("\n\n ***********\n\n INSERTING -> {:?}", (ii, cc));
 unsafe { REPROED = false; }
 
         if let Err(_) = unsafe {
-            LLVMFuzzerTestOneInput(std::mem::transmute(poc.as_ptr()), std::mem::transmute(data.as_ptr()), data.len())
+            LLVMFuzzerTestOneInput(&fzzcfg, std::mem::transmute(poc.as_ptr()), std::mem::transmute(data.as_ptr()), data.len())
         } { continue }
 
         if 0 != counter {
@@ -196,23 +203,21 @@ unsafe { REPROED = false; }
         }
 println!("\n\n ***********\n\n CLEANING -> {:?} |", generic::data_const_unsafe::<PocDataHeader>(&poc).calls_count);
         if let Err(_) = unsafe {
-            LLVMFuzzerTestOneInput(std::mem::transmute(poc.as_ptr()), std::mem::transmute(data.as_ptr()), data.len())
+            LLVMFuzzerTestOneInput(&fzzcfg, std::mem::transmute(poc.as_ptr()), std::mem::transmute(data.as_ptr()), data.len())
         } { continue }
 
     let reproed = unsafe { REPROED };
-if !reproed { generic::append_file_raw("banana.txt", b"$"); }
-else { generic::append_file_raw("banana.txt", b"@"); }
-assert!(reproed);
+    assert!(reproed);
 
 //        assert!(total_size == generic::data_mut_unsafe::<PocDataHeader>(&mut poc).total_size);
         let total_size = generic::data_mut_unsafe::<PocDataHeader>(&mut poc).total_size;
         let data = poc[..total_size].to_vec();
-        generic::write_file_raw(format!("./bfl_in/{:X}", cc).as_str(), &data);
+        generic::write_file_raw(format!("./bfl_in/{:X}", cc).as_str(), &data).unwrap();
 
         assert!(!0 == generic::data_const_unsafe::<PocDataHeader>(&poc).insert_ind);
 println!("\n\n ***********\n\n TESTING");
         if let Err(_) = unsafe {
-            LLVMFuzzerTestOneInput(std::mem::transmute(poc.as_ptr()), std::mem::transmute(data.as_ptr()), data.len())
+            LLVMFuzzerTestOneInput(&fzzcfg, std::mem::transmute(poc.as_ptr()), std::mem::transmute(data.as_ptr()), data.len())
 
         } { continue }
 

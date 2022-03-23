@@ -6,11 +6,6 @@ use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 use self::core::banana::bananaq::{self, FuzzyQ};
 
-extern crate api;
-use self::api::leafs::deref_leaf::*;
-
-use args::movem::*;
-
 use common::table::CallIds;
 
 struct KOLeaf { }
@@ -24,7 +19,6 @@ impl IArgLeaf for KOLeaf {
     fn name(&self) -> &'static str { "K.O. Leaf" }
 
     fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, _mem: &mut[u8], _fd: &[u8], _shared: &[u8]) {
-//        bananaq.upgrade().unwrap().write().unwrap().stop()
         bananaq::stop(bananaq).unwrap()
     }
 }
@@ -41,7 +35,7 @@ impl GameOver for Call {
 				Arg::primitive_arg(
 					Box::new( KOLeaf { } )),
 			],
-			|args| { 
+			|_args| { 
                 /*
                 if let [fd] = &mut args[..] {
                     let mid: Move = fd.data()[0].into();

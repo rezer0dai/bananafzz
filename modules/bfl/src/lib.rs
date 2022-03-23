@@ -2,6 +2,8 @@
 extern crate serde_derive;
 extern crate serde;
 
+extern crate rand;
+
 extern crate libc;
 
 use std::{
@@ -14,7 +16,6 @@ pub mod poc;
 pub mod repro;
 mod bfl;
 use bfl::BananizedFuzzyLoop;
-pub use bfl::KNOWLEDGE_MAP;
 pub mod info;
 pub use info::BananizedFuzzyLoopConfig;
 pub mod crossover;

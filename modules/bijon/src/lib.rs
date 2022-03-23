@@ -1,10 +1,6 @@
-#[macro_use]
-extern crate serde_derive;
-extern crate serde;
-
 extern crate core;
 use core::exec::call::Call;
-use core::banana::observer::{ICallObserver, IStateObserver};
+use core::banana::observer::ICallObserver;
 use core::state::state::StateInfo;
 
 pub trait IBananaFeedback {
@@ -12,10 +8,14 @@ pub trait IBananaFeedback {
 }
 
 use std::{
-    rc::Rc,
-    sync::{RwLock, RwLockWriteGuard},
+//    rc::Rc,
+    sync::{
+//        RwLock, 
+        RwLockWriteGuard,
+    },
 };
 
+#[allow(improper_ctypes)]
 extern "C" {
     fn banana_feedback<'a>() -> RwLockWriteGuard<'a, Vec<Vec<u8>>>;
 }
@@ -74,6 +74,7 @@ impl Bijon {
         return node
     }
 
+    #[allow(dead_code)]
     fn pos_feedback(&self, state: &StateInfo, call: &mut Call) -> Vec<u8> {
 // position feadback : opt - out, just testing for feedback
         if 0x11u64 != call.id().into() {
@@ -89,7 +90,8 @@ impl Bijon {
         }.to_le_bytes().to_vec()
     }
 
-    fn lop_feedback(&self, state: &StateInfo, call: &mut Call) -> Vec<u8> {
+    #[allow(dead_code)]
+    fn lop_feedback(&self) -> Vec<u8> {
 // length of poc feadback : opt - out, just testing for feedback
         unsafe{ 
             HITC += 1;
@@ -107,6 +109,8 @@ impl ICallObserver for Bijon {
 //println!("[B-IJON] pos_x, pos_y {:?}", call.args_view(1).data_const_unsafe::<(u32, u32)>());
         
         let node = self.feedback(state, call);
+//        let node = self.pos_feedback(state, call);
+//        let node = self.lop_feedback();
         if 0 != node.len() {
             unsafe { banana_feedback().push(node) }
         }

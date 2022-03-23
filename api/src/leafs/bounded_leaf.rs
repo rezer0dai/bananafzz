@@ -11,15 +11,14 @@ use rand::distributions::uniform::SampleUniform;
 use rand::seq::SliceRandom;
 
 extern crate core;
-use self::core::banana::bananaq::FuzzyQ;
+use self::core::banana::bananaq::{self, FuzzyQ};
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
-
-use core::config::FZZCONFIG;
 
 /// arg generator for bounded values - ranges ( 1..22, 0..1, 66..888, ..)
 pub struct Bounded<T> {
     bounds: Vec< RangeInclusive<T> >,
+    afl_fix_ratio: f64,
 }
 
 impl<T> Bounded<T>
@@ -31,6 +30,7 @@ impl<T> Bounded<T>
         let bounds = bounds.into();
         Bounded {
             bounds : vec![bounds],
+            afl_fix_ratio: -1.0,
         }
     }
     pub fn ranges<B>(bounds: Vec<B>) -> Bounded<T>
@@ -44,6 +44,7 @@ impl<T> Bounded<T>
                     bounds
                 })
                 .collect(),
+            afl_fix_ratio: -1.0,
         }
     }
 }
@@ -52,7 +53,7 @@ impl<T: Copy + PartialOrd + SampleUniform + Debug + Add<Output = T> + Sub<Output
 {
     fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
         let size = self.default_load(mem, dump, data);
-        if !rand::thread_rng().gen_bool(FZZCONFIG.afl_fix_ratio) {
+        if !rand::thread_rng().gen_bool(self.afl_fix_ratio) {
             return size
         }
 
@@ -79,7 +80,10 @@ impl<T: Copy + PartialOrd + SampleUniform + Debug + Add<Output = T> + Sub<Output
 
     fn name(&self) -> &'static str { "Bounded" }
 
-    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &[u8]) {
+        if self.afl_fix_ratio < 0.0 {
+            self.afl_fix_ratio = bananaq::config(bananaq).unwrap().afl_fix_ratio;
+        }
         *generic::data_mut_unsafe::<T>(mem) = match self.bounds.clone().choose(&mut rand::thread_rng()) {
             Some(bounds) => rand::thread_rng().gen_range(bounds.clone()),
             None => panic!("nothing in bound array ?"),
