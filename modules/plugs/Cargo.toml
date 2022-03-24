@@ -1,6 +1,6 @@
 [package]
 name = "plugs"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["re:Zer0dAI <tutti@frutti.com>"]
 
 [dependencies]
