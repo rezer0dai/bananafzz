@@ -1,7 +1,7 @@
 From 412669639f39824be9774cb1e49f3ae2f23accd0 Mon Sep 17 00:00:00 2001
 From: ChiefBanana <eatfigs@teambananas.ai>
 Date: Mon, 21 Feb 2022 15:38:36 -0500
-Subject: [PATCH 1/3] BFL dirty push
+Subject: [PATCH 1/4] BFL dirty push
 
 ---
  libafl/Cargo.toml                  |   3 +
@@ -1083,7 +1083,7 @@ index f912a591..b592590e 100644
 From f9cbecdd72f2abff772671bac14f5db8b080a920 Mon Sep 17 00:00:00 2001
 From: Chief Banana <team@banana.com>
 Date: Sat, 12 Mar 2022 16:51:17 -0500
-Subject: [PATCH 2/3] BFL integration
+Subject: [PATCH 2/4] BFL integration
 
 ---
  libafl/src/executors/mod.rs      |  2 +
@@ -1640,7 +1640,7 @@ index b592590e..89de3703 100644
 From db77ae71edaa7319e0b4ae4eb674f6bbb8f13b7a Mon Sep 17 00:00:00 2001
 From: ChiefBanana <eatfigs@teambananas.ai>
 Date: Thu, 24 Mar 2022 18:14:35 -0500
-Subject: [PATCH 3/3] rotating buffer instead of classic afl one, adding
+Subject: [PATCH 3/4] rotating buffer instead of classic afl one, adding
  AddBanana to BFL
 
 ---
@@ -3492,6 +3492,1176 @@ index 0090ec9c..26c66e26 100644
                          println!("File {:?} was not interesting, skipped.", &path);
                      }
                  }
+-- 
+2.34.1
+
+
+From 4225b44df9516b7d4b0f9347f3eb65f4c1116586 Mon Sep 17 00:00:00 2001
+From: ChiefBanana <eatfigs@teambananas.ai>
+Date: Sat, 26 Mar 2022 07:44:01 -0500
+Subject: [PATCH 4/4] rotator of aflbitmap implemented, bijon separated to
+ file, bfl finalized too
+
+---
+ libafl/src/corpus/mod.rs         |   2 +-
+ libafl/src/corpus/ondisk.rs      |  47 +++---
+ libafl/src/corpus/powersched.rs  |  13 ++
+ libafl/src/corpus/rotator.rs     | 240 +++++++++++++++++--------------
+ libafl/src/feedbacks/map.rs      |  10 +-
+ libafl/src/lib.rs                |   2 +-
+ libafl/src/mutators/banana.rs    |   6 -
+ libafl/src/mutators/bananizer.rs |   1 -
+ libafl/src/observers/bijon.rs    | 220 ++++++++++++++++++++++++++++
+ libafl/src/observers/map.rs      | 191 ------------------------
+ libafl/src/observers/mod.rs      |   3 +
+ libafl/src/stages/power.rs       |  37 ++---
+ 12 files changed, 426 insertions(+), 346 deletions(-)
+ create mode 100644 libafl/src/observers/bijon.rs
+
+diff --git a/libafl/src/corpus/mod.rs b/libafl/src/corpus/mod.rs
+index d827429c..76d7353a 100644
+--- a/libafl/src/corpus/mod.rs
++++ b/libafl/src/corpus/mod.rs
+@@ -21,7 +21,7 @@ pub use queue::QueueCorpusScheduler;
+ 
+ pub mod rotator;
+ pub use rotator::{
+-    IndexesRotatingCorpusScheduler, DropoutsMetadata,
++    IndexesRotatingCorpusScheduler, DropoutsMetadata, DropoutInfo,
+ };
+ 
+ pub mod minimizer;
+diff --git a/libafl/src/corpus/ondisk.rs b/libafl/src/corpus/ondisk.rs
+index b3816d9b..dfb46021 100644
+--- a/libafl/src/corpus/ondisk.rs
++++ b/libafl/src/corpus/ondisk.rs
+@@ -19,7 +19,7 @@ use crate::{
+     state::HasMetadata, Error,
+ };
+ 
+-use hashbrown::HashMap;
++use hashbrown::{HashSet, HashMap};
+ 
+ /// Options for the the format of the on-disk metadata
+ #[cfg(feature = "std")]
+@@ -135,7 +135,8 @@ where
+             .store_input()
+             .expect("Could not save testcase to disk");
+ 
+-        Ok(self.place_to_list(testcase))
++        self.hotest = self.place_to_list(testcase);
++        Ok(self.hotest)
+     }
+ 
+     /// Replaces the testcase at the given idx
+@@ -147,7 +148,6 @@ where
+ 
+         //this hacked version will replace, if needed, entries[idx] with
+         //its real input, so redirect[idx] = 0
+-        
+         let dest = self.dest(idx);
+ 
+         if testcase.input().is_some() {
+@@ -158,6 +158,7 @@ where
+             // ok request to just update at idx position with original
+             self.update_head_at(idx, dest, testcase)
+         }
++        self.hotest = idx;
+         return Ok(())
+     }
+ 
+@@ -172,7 +173,6 @@ where
+ 
+         self.prepare_drop(idx);
+         self.update_hotest(idx);
+-
+         self.redirect.insert(idx, self.hotest);
+         let entry = self.entries[idx].replace(testcase);
+         if let Some(ref path) = entry.filename() {
+@@ -185,8 +185,7 @@ where
+     /// Get by id
+     #[inline]
+     fn get(&self, idx: usize) -> Result<&RefCell<Testcase<I>>, Error> {
+-        let idx = self.dest(idx);
+-        Ok(&self.entries[idx])
++        Ok(&self.entries[self.dest(idx)])
+     }
+ 
+     /// Current testcase scheduled
+@@ -267,8 +266,6 @@ where
+ 
+         self.redirect.remove(&idx);
+         self.entries[idx].replace(entry);
+-
+-        self.hotest = idx;
+     }
+ 
+     fn update_hotest(&mut self, idx: usize) {
+@@ -300,22 +297,16 @@ where
+ 
+         assert!(idx != dest);// should be clear as the sky
+ 
+-        let hotest = self.hotest;
+         self.update_head_at(
+             idx, dest, Testcase::<I>::default());
+-        self.hotest = hotest;
+     }
+ 
+     fn place_to_list(&mut self, testcase: Testcase<I>) -> usize {
+-        let is_real = testcase.input().is_some();
+-        self.hotest = if self.redirect.is_empty() {
++        if self.redirect.is_empty() {
+             self.append(testcase)
+         } else {
+             self.zombiefy(testcase)
+-        };
+-        println!("[new poc] => {:?} => {:?}", 
+-            self.hotest, is_real);
+-        self.hotest
++        }
+     }
+ 
+     fn append(&mut self, testcase: Testcase<I>) -> usize {
+@@ -324,9 +315,29 @@ where
+     }
+ 
+     fn zombiefy(&mut self, testcase: Testcase<I>) -> usize {
+-        let idx = *self.rand.choose(self.redirect.keys());
+-        self.entries[idx].replace(testcase);
++        let values = self.redirect
++            .values()
++            .copied()
++            .collect::<HashSet<usize>>();
++// ok we will need to choose leaf node, from reversed tree
++        let idx = self.rand.choose(
++            self.redirect
++                .keys()
++                .copied()
++                .collect::<HashSet<usize>>()
++                .difference(&values)
++                .collect::<Vec<&usize>>()).clone();
++            /*
++        let idx = loop {
++            let idx = *self.rand.choose(self.redirect.keys());
++            if !self.redirect.values().contains(idx) {
++                break idx
++            }
++        }
++        assert!(!self.redirect.values().copied().collect::<Vec<usize>>().contains(&idx));
++            */
+         self.redirect.remove(&idx);
++        self.entries[idx].replace(testcase);
+         idx
+     }
+ }
+diff --git a/libafl/src/corpus/powersched.rs b/libafl/src/corpus/powersched.rs
+index 56741bd5..0c3cb9c7 100644
+--- a/libafl/src/corpus/powersched.rs
++++ b/libafl/src/corpus/powersched.rs
+@@ -40,6 +40,19 @@ where
+                 .depth(),
+             None => 0,
+         };
++        /*
++        let mut depth = match current_idx {
++            Some(idx) => if let Some(meta) = state
++                .corpus()
++                .get(idx)?
++                .borrow_mut()
++                .metadata_mut()
++                .get_mut::<PowerScheduleTestcaseMetaData>() {
++                    meta.depth()
++                } else { 0 },
++            None => 0,
++        };
++        */
+ 
+         // Attach a `PowerScheduleTestData` to the queue entry.
+         depth += 1;
+diff --git a/libafl/src/corpus/rotator.rs b/libafl/src/corpus/rotator.rs
+index 875e2fa9..f9b340b1 100644
+--- a/libafl/src/corpus/rotator.rs
++++ b/libafl/src/corpus/rotator.rs
+@@ -18,33 +18,43 @@ use serde::{Deserialize, Serialize};
+ /// Default probability to skip the non-favored values
+ pub const DEFAULT_SKIP_NON_FAVORED_PROB: u64 = 95;
+ 
+-crate::impl_serdeany!(DropoutsMetadata);
+-
++/// unique information per input drop
++#[derive(Debug, Serialize, Deserialize)]
++pub struct DropoutInfo {
++    /// corpus idx of input do drop
++    pub idx: usize,
++    /// corpus idx of input to replace with
++    pub tgt: usize,
++    /// corpus id based on hash of input data for input to drop
++    pub cid: u64,
++}
+ /// integral structure for rotating of inputs
+ #[derive(Debug, Serialize, Deserialize)]
+ pub struct DropoutsMetadata {
+     /// ...
+-    pub list: Vec<(usize, usize)>,
++    pub list: Vec<DropoutInfo>,
+ }
++crate::impl_serdeany!(DropoutsMetadata);
+ 
+ /// integral structure for rotating of inputs
+ #[derive(Debug, Serialize, Deserialize)]
+ pub struct RotationMeta {
+     idx: usize,
+     counter: usize,
++    cid: u64,
++    elem: usize,
+ }
+ 
+ /// A state metadata holding a map of favoreds testcases for each map entry
+ #[derive(Debug, Serialize, Deserialize)]
+-pub struct TopRatedsMetadata {
++pub struct RotatorsMetadata {
+     /// map index -> corpus index
+     pub map: HashMap<usize, RotationMeta>,
+ }
++crate::impl_serdeany!(RotatorsMetadata);
+ 
+-crate::impl_serdeany!(TopRatedsMetadata);
+-
+-impl TopRatedsMetadata {
+-    /// Creates a new [`struct@TopRatedsMetadata`]
++impl RotatorsMetadata {
++    /// Creates a new [`struct@RotatorsMetadata`]
+     #[must_use]
+     pub fn new() -> Self {
+         Self {
+@@ -53,7 +63,7 @@ impl TopRatedsMetadata {
+     }
+ }
+ 
+-impl Default for TopRatedsMetadata {
++impl Default for RotatorsMetadata {
+     fn default() -> Self {
+         Self::new()
+     }
+@@ -85,8 +95,8 @@ where
+ {
+     /// Add an entry to the corpus and return its index
+     fn on_add(&self, state: &mut S, idx: usize) -> Result<(), Error> {
+-        self.update_score(state, idx)?;
+-        self.base.on_add(state, idx)
++        self.base.on_add(state, idx)?;
++        self.update_score(state, idx)
+     }
+ 
+     /// Replaces the testcase at the given idx
+@@ -135,125 +145,128 @@ where
+     #[allow(clippy::cast_possible_wrap)]
+     pub fn update_score(&self, state: &mut S, idx: usize) -> Result<(), Error> {
+         // Create a new top rated meta if not existing
+-        if state.metadata().get::<TopRatedsMetadata>().is_none() {
+-            state.add_metadata(TopRatedsMetadata::new());
++        if state.metadata().get::<RotatorsMetadata>().is_none() {
++            state.add_metadata(RotatorsMetadata::new());
+         }
+-
+         if state.metadata().get::<DropoutsMetadata>().is_none() {
+             state.add_metadata(DropoutsMetadata { list : vec![] });
+         }
++// idx is not unique identifier once we remove from ondisk, but hash should be
++        let cid = get_cid(state, idx);
++// avoid favorizing replaying input which was deemed to drop but was not droped yet
++        if state
++            .metadata()
++            .get::<DropoutsMetadata>()
++            .unwrap()
++            .list
++            .iter()
++            .filter(|&info| cid == info.cid)
++            .nth(0) 
++            .is_some()
++        { // keep it from sadman's parade - spamming disk of doubles inputs
++            return Err(
++                Error::KeyNotFound(format!("Input waiting to drop")))
++        }
+ 
+-        // ok lets query metadata aka coverage edge indicies
+-        let meta = state
++// ok lets query metadata aka coverage edge indicies
++        let meta = state 
+             .corpus()
+-            .get(idx)?
++            .get(idx).unwrap()
+             .borrow()
+             .metadata()
+-            .get::<M>().ok_or_else(|| {
+-                Error::KeyNotFound(format!(
+-                    "Metadata needed for RotatingCorpusScheduler not found in testcase #{}",
+-                    idx
+-                ))
+-            })?
++            .get::<M>().unwrap()
+             .as_slice()
+             .to_vec();
+ 
+-
+-        let cid = get_cid(state, idx);
+-
+-        let mut visited = HashSet::new();
+-
+-        let mut new_favoreds = vec![];
+-
+-        let to_drop = meta
++// separate novels from potential cadidates for rotation
++        let (dropouts, novels): (Vec<(usize, Option<bool>)>, _) = meta
+             .iter()
+-            .filter(|&elem| if let Some(ref mut info) = state
++            .map(|elem| if let Some(ref mut info) = state
+                     .metadata_mut()
+-                    .get_mut::<TopRatedsMetadata>()
++                    .get_mut::<RotatorsMetadata>()
+                     .unwrap()
+                     .map
+-                    .get_mut(elem) 
++                    .get_mut(elem)
+                 {
+-                    if !visited.contains(&info.idx) {
+-                        info.counter += 1
+-                    }
+-                    visited.insert(info.idx);
+-                    info.counter > 0x42
+-                } else { 
+-                    new_favoreds.push(*elem);
+-                    false 
+-                })
+-// we need to to chain it like this, as at first we want to update TopRatedsMetadata
+-// by info.counters...
+-            .map(|elem| *elem)
+-            .collect::<Vec<usize>>()
++                    info.counter += 1;
++                    (elem.clone(), Some(info.counter > 0x42))
++                } else { (elem.clone(), None) })
++            .partition(|(_, info)| info.is_some());
++
++        let mut new_favoreds = vec![];
++
++        let mut dropouts = dropouts
+             .iter()
+-//now we are back ... to continue to work with updated TopRatedsMetadata
+-            .map(|&elem| (elem, state
++            // check if fuzzed enough cycles, if so then rotate
++            .filter(|&(_, fuzzed_enough)| fuzzed_enough.unwrap())
++            // adding corpus-idx of fuzzed enough target
++            .map(|(elem, _)| state
+                     .metadata()
+-                    .get::<TopRatedsMetadata>()
+-                    .unwrap()
++                    .get::<RotatorsMetadata>().unwrap()
+                     .map
+-                    .get(&elem)
+-                    .unwrap()
+-                    .idx))
+-            .filter(|&(_, old_idx)| get_cid(state, old_idx) != cid) // avoid self pointers
+-            .filter(|&(elem, old_idx)| {
+-                assert!(idx != old_idx);
+-                new_favoreds.push(elem); // ok here we collect ones which is ok to ROTATE
+-                0 == state // and collect all whose are fully expandalble 
++                    .get(&elem).unwrap())
++            // avoid self pointers
++            .filter(|info| info.cid != cid)
++            // just in case input was cleared and we are not able to get hash anymore
++            .inspect(|info| assert!(info.idx != idx))//.filter(|info| info.idx != idx)//
++            // ok here we collect unique-ones which are ok to ROTATE
++            .inspect(|info| new_favoreds.push((info.elem, None)))
++            // and collect all whose are fully expandalble by now
++            .filter(|info| if let Some(ref mut old_meta) = state 
+                     .corpus()
+-                    .get(old_idx).unwrap()
++                    .get(info.idx).unwrap()
+                     .borrow_mut()
+                     .metadata_mut()
+-                    .get_mut::<M>().unwrap()
+-                    .refcnt_mut()
+-                    .checked_sub(1)
+-                    .unwrap() // we want panic here if below 0!
+-                //drop(old.metadata_mut().remove::<M>());
+-                //println!("DROP: {elem}::{:?} + REPLACE", old.filename());
+-            })
+-            .map(|(_, old_idx)| (old_idx, idx))
+-            .collect::<Vec<(usize, usize)>>();
+-
+-        if new_favoreds.is_empty() {
+-            println!("DROPING INPUT!! -> we got better : {:?}", meta.len());
+-            return Err(Error::KeyNotFound(format!("droping un-interesting input")))
++                    .get_mut::<M>() 
++                {
++                    *old_meta.refcnt_mut() -= 1;
++                    assert!(old_meta.refcnt() >= 0);
++                    0 == old_meta.refcnt()
++                } else { false })
++            .map(|info| DropoutInfo{ idx:info.idx, tgt:idx, cid:info.cid })
++            .collect::<Vec<DropoutInfo>>();
++
++// if nothing to contribute ( nove, or exchange in rotation ) then signal to remove from corpus
++        if new_favoreds.is_empty() && novels.is_empty() {
++            println!("DROPING INPUT!! -> we got better : {:?} <{:?}>", meta.len(),
++                state.corpus().get(idx).unwrap().borrow().filename().as_ref().unwrap());
++            return Err(
++                Error::KeyNotFound(format!("DROPING: non-( or way T00 MUCHO) interesting input ({})",
++                    state.corpus().get(idx).unwrap().borrow().filename().as_ref().unwrap())));
+         }
+ 
+-        state
++// keep count of inputs relevancy in fuzzing rotation
++        *state
+             .corpus()
+             .get(idx).unwrap()
+             .borrow_mut()
+             .metadata_mut()
+             .get_mut::<M>().unwrap()
+-            .refcnt_mut()
+-            .checked_add(new_favoreds.len() as isize)
+-            .ok_or_else(|| 
+-                Error::KeyNotFound(format!("droping T00 MUCHO interesting input"))
+-            )?;
+-
+-        state // every new stuff will get time to shine
+-            .corpus()
+-            .get(idx).unwrap()
+-            .borrow_mut()
+-            .add_metadata(IsFavoredMetadata {});
+-
+-        for elem in new_favoreds {
+-            state
+-                .metadata_mut()
+-                .get_mut::<TopRatedsMetadata>()
+-                .unwrap()
+-                .map
+-                .insert(elem, RotationMeta{ idx: idx, counter: 0 });
++            .refcnt_mut() += (new_favoreds.len() + novels.len()) as isize;
++// if novel we want to favor it until given enough time
++        if 0 != novels.len() {
++            state // every new stuff will get time to shine
++                .corpus()
++                .get(idx).unwrap()
++                .borrow_mut()
++                .add_metadata(IsFavoredMetadata {});
+         }
+-
++// register our top_rateds
++        novels.iter().chain(new_favoreds.iter())
++            .for_each(|&(elem, _)| {
++                state
++                    .metadata_mut()
++                    .get_mut::<RotatorsMetadata>().unwrap()
++                    .map
++                    .insert(elem, RotationMeta{ idx: idx, counter: 0, cid: cid, elem: elem });
++            });
++// register what to drop
+         state
+             .metadata_mut()
+             .get_mut::<DropoutsMetadata>()
+             .unwrap()
+             .list
+-            .extend_from_slice(&to_drop);
++            .append(&mut dropouts);
+ 
+         return Ok(())
+     }
+@@ -261,17 +274,20 @@ where
+     /// Cull the `Corpus` using the `RotatingCorpusScheduler`
+     #[allow(clippy::unused_self)]
+     pub fn cull(&self, state: &mut S) -> Result<(), Error> {
+-        let top_rated = if let Some(tops) = state.metadata().get::<TopRatedsMetadata>() 
++        let top_rated = if let Some(tops) = state.metadata().get::<RotatorsMetadata>() 
+             { tops } else { return Ok(()) };
+ 
+-        for &idx in top_rated.map
++        let need_more = top_rated.map
+             .values()
+-            .filter(|&info| info.counter > 66)
+-            .map(|ref info| (get_cid(state, info.idx), info.idx))
+-            .collect::<HashMap<u64, usize>>()
++            .filter(|&info| info.counter < 66)
++            .map(|ref info| info.cid)
++            .collect::<HashSet<u64>>();
++
++        for info in top_rated.map
+             .values()
++            .filter(|&info| !need_more.contains(&info.cid))
+         {
+-            let mut entry = state.corpus().get(idx)?.borrow_mut();
++            let mut entry = state.corpus().get(info.idx)?.borrow_mut();
+ 
+             assert!(entry.metadata().get::<M>().is_some(),
+                 //by definition meta is there until last reference is droped
+@@ -282,7 +298,7 @@ where
+             if !entry.has_metadata::<IsFavoredMetadata>() {
+                 continue
+             }
+-            
++
+             drop(// ok here i just follow pattern, not sure why need do explicitelly drop ?
+                 entry.metadata_mut().remove::<IsFavoredMetadata>()
+             );
+@@ -328,10 +344,22 @@ where
+     I: Input + HasBytesVec,
+     S: HasCorpus<I>,
+ {
+-    if let Some(input) = state
++    let mut testcase = state
+         .corpus()
+         .get(idx).unwrap()
+-        .borrow()
+-        .input() 
+-    { hash(input.bytes()) } else { 0 }
++        .borrow_mut();
++    let (in_mem, bytes) = match testcase.load_input() {
++        Ok(input) => (true, input.bytes().as_ref()),
++        _ => (false, testcase // if in disk then banana modifications have been too
++                .load_input().unwrap()
++                .bytes().as_ref())
++    };
++    let hash = hash(bytes);
++// NOTE :   i am not sure what is criterion on storing memory to file in LibAFL
++//          therefore likely we dont need to store it, as once modified by BFL
++//          it will be stored by default to disk
++    if in_mem { // we want bananized input to store to file
++        testcase.store_input().unwrap();
++    }
++    hash
+ }
+diff --git a/libafl/src/feedbacks/map.rs b/libafl/src/feedbacks/map.rs
+index 5c7f7b9f..282a35db 100644
+--- a/libafl/src/feedbacks/map.rs
++++ b/libafl/src/feedbacks/map.rs
+@@ -653,8 +653,8 @@ where
+ 
+ /// ...
+ #[derive(Serialize, Deserialize, Clone, Debug)]
+-pub struct NovelIsNovel {}
+-impl<T> IsNovel<T> for NovelIsNovel
++pub struct NewIsNovel {}
++impl<T> IsNovel<T> for NewIsNovel
+ where
+     T: PrimInt + Default + Copy + 'static + Serialize + serde::de::DeserializeOwned,
+ {
+@@ -676,7 +676,7 @@ where
+     }
+ }
+ /// ...
+-pub type RotationAflMapFeedback<I, O, S, T> = MapFeedback<I, NovelIsNovel, O, NoReducer, S, T>;
++pub type RotationAflMapFeedback<I, O, S, T> = MapFeedback<I, NewIsNovel, O, NoReducer, S, T>;
+ 
+ #[cfg(test)]
+ mod tests {
+@@ -687,8 +687,8 @@ mod tests {
+         // sanity check
+         assert!(AllIsNovel::is_novel(0_u8, 0));
+ 
+-        assert!(!NovelIsNovel::is_novel(0_u8, NoReducer::reduce(0x42, 0)));
+-        assert!(NovelIsNovel::is_novel(66, NoReducer::reduce(0x42, 66)));
++        assert!(!NewIsNovel::is_novel(0_u8, NoReducer::reduce(0x42, 0)));
++        assert!(NewIsNovel::is_novel(66, NoReducer::reduce(0x42, 66)));
+ 
+         assert!(!NextPow2IsNovel::is_novel(0_u8, 0));
+         assert!(NextPow2IsNovel::is_novel(0_u8, 1));
+diff --git a/libafl/src/lib.rs b/libafl/src/lib.rs
+index efa58a45..55604011 100644
+--- a/libafl/src/lib.rs
++++ b/libafl/src/lib.rs
+@@ -62,7 +62,7 @@ Welcome to `LibAFL`
+     )
+ )]
+ 
+-#![feature(drain_filter)]
++#![feature(drain_filter, mixed_integer_ops)]
+ 
+ #[macro_use]
+ extern crate lazy_static;
+diff --git a/libafl/src/mutators/banana.rs b/libafl/src/mutators/banana.rs
+index aaa33c0d..ecd4d457 100644
+--- a/libafl/src/mutators/banana.rs
++++ b/libafl/src/mutators/banana.rs
+@@ -31,7 +31,6 @@ impl BananaState {
+     }
+ 
+     pub fn generate(&self) -> bool { 
+-println!("GENERATION STATS : {:?}", (self.generate, self.stage_idx, (N_GENERATIONS * N_ITERS)));
+         self.generate && (0 != self.stage_idx % (N_GENERATIONS * N_ITERS)) 
+     }
+ 
+@@ -62,7 +61,6 @@ println!("GENERATION STATS : {:?}", (self.generate, self.stage_idx, (N_GENERATIO
+         poc_header.total_size
+     }
+     fn register_stage<I: Input + HasBytesVec>(&mut self, stage_idx: i32, input: &mut I) {
+-println!("--------------------------[BFL] sidx:{stage_idx}");
+         if self.stage_idx == stage_idx {
+             return
+         }
+@@ -73,10 +71,8 @@ println!("--------------------------[BFL] sidx:{stage_idx}");
+             self.calls.clear()
+         }
+         let nb_size = self.new_bananas(input.bytes());
+-println!("--------------------------[BFL] {stage_idx} + {nb_size}");
+         if 0 == nb_size {
+ if self.generate() { println!("[BFL] failing to stack up insert/crossover at {stage_idx} level") }
+-println!("--------------------------[BFL] no POC at all ...");
+             return self.calls.clear()
+         }//no banana inserted in latest AFL fuzz_one round..
+ 
+@@ -90,11 +86,9 @@ println!("--------------------------[BFL] no POC at all ...");
+         self.generate = generate;
+ 
+         if self.generate() {
+-println!("--------------------------[BFL] USING POC {stage_idx}");
+             return
+         }
+ 
+-println!("--------------------------[BFL] deleting POC");
+         unsafe { //once we do this, we must generate, otherwise with this input no insert calls / crossover
+             &mut ::std::slice::from_raw_parts_mut(
+                 self.poc.as_ptr() as *mut PocDataHeader, 1)[0] 
+diff --git a/libafl/src/mutators/bananizer.rs b/libafl/src/mutators/bananizer.rs
+index b2f777b7..4a44a811 100644
+--- a/libafl/src/mutators/bananizer.rs
++++ b/libafl/src/mutators/bananizer.rs
+@@ -103,7 +103,6 @@ where
+             input.bytes()[off..][..size][ind..].to_vec()).into();
+ 
+         let result = self.mutator.mutate(seed, &mut banana_input, stage_idx);
+-println!("do mutate [{:?}] {:?} .. {:?}", result, (call.kin, head.cid, head.dmp_size), (off, size, ind));
+ 
+         assert!(size - banana_input.bytes().len() == ind);
+         (&input.bytes_mut()[off..][..size][ind..])
+diff --git a/libafl/src/observers/bijon.rs b/libafl/src/observers/bijon.rs
+new file mode 100644
+index 00000000..c3c5abd3
+--- /dev/null
++++ b/libafl/src/observers/bijon.rs
+@@ -0,0 +1,220 @@
++//! The `BijonObserver` provides ability for custom black box feedback
++
++use ahash::AHasher;
++use alloc::vec::Vec;
++use core::{
++    fmt::Debug,
++    hash::Hasher,
++    slice::{from_raw_parts, Iter, IterMut},
++};
++use num_traits::PrimInt;
++use serde::{Deserialize, Serialize};
++
++use crate::{
++    bolts::{
++        tuples::Named,
++        AsMutSlice, AsSlice, HasLen,
++    },
++    observers::Observer,
++    Error,
++};
++
++// okay we are just wip extension building up on LibAFL patterns
++use super::map::*;
++
++use hashbrown::HashMap;
++
++use libbijon::IBananaFeedback;
++
++use std::sync::{RwLock, RwLockWriteGuard};
++
++// TODO redo this stuff, likely via OwnedSlice, just temporary via lazy static
++lazy_static! {
++    static ref BANANA_FEEDBACK: RwLock<Vec<Vec<u8>>> = RwLock::new(vec![]);
++}
++
++#[no_mangle]
++fn banana_feedback<'a>() -> RwLockWriteGuard<'a, Vec<Vec<u8>>> {
++    BANANA_FEEDBACK.write().unwrap()
++}
++
++/// Compute the hash of a slice
++fn hash_slice<T: PrimInt>(slice: &[T]) -> u64 {
++    let mut hasher = AHasher::new_with_keys(0, 0);
++    let ptr = slice.as_ptr() as *const u8;
++    let map_size = slice.len() / core::mem::size_of::<T>();
++    unsafe {
++        hasher.write(from_raw_parts(ptr, map_size));
++    }
++    hasher.finish()
++}
++
++/// bijon for bananafuzzer
++#[derive(Serialize, Deserialize, Debug)]
++#[allow(clippy::unsafe_derive_deserialize)]
++pub struct BijonObserver {
++    map: Vec<u8>,
++    edges: HashMap<usize, usize>,
++    initial: u8,
++    prev: usize,
++    upper_limit: usize,
++}
++
++impl<I, S> Observer<I, S> for BijonObserver
++where
++    Self: MapObserver,
++{
++    #[inline]
++    fn pre_exec(&mut self, _state: &mut S, _input: &I) -> Result<(), Error> {
++//        assert!(0 == BANANA_FEEDBACK.write().unwrap().clear());
++        BANANA_FEEDBACK
++            .write().unwrap()
++            .clear();
++
++        self.prev = 0;
++        self.reset_map()
++    }
++    #[inline]
++    fn post_exec(&mut self, _state: &mut S, _input: &I) -> Result<(), Error> {
++        BANANA_FEEDBACK
++            .write().unwrap()
++            .drain(..)
++            .for_each(|ref node| self.add_node(node));
++        Ok(())
++    }
++}
++
++impl Named for BijonObserver {
++    #[inline]
++    fn name(&self) -> &str {
++        "B-IJON MAP"
++    }
++}
++
++impl HasLen for BijonObserver {
++    #[inline]
++    fn len(&self) -> usize {
++        self.upper_limit
++    }
++}
++
++impl<'it> IntoIterator for &'it BijonObserver {
++    type Item = <Iter<'it, u8> as Iterator>::Item;
++    type IntoIter = Iter<'it, u8>;
++
++    fn into_iter(self) -> Self::IntoIter {
++        self.as_slice().iter()
++    }
++}
++
++impl<'it> IntoIterator for &'it mut BijonObserver {
++    type Item = <IterMut<'it, u8> as Iterator>::Item;
++    type IntoIter = IterMut<'it, u8>;
++
++    fn into_iter(self) -> Self::IntoIter {
++        self.as_mut_slice().iter_mut()
++    }
++}
++
++impl MapObserver for BijonObserver {
++    type Entry = u8;
++
++    #[inline]
++    fn get(&self, pos: usize) -> &u8 {
++        &self.as_slice()[pos]
++    }
++
++    #[inline]
++    fn get_mut(&mut self, idx: usize) -> &mut u8 {
++        &mut self.as_mut_slice()[idx]
++    }
++
++    #[inline]
++    fn usable_count(&self) -> usize {
++        self.as_slice().len()
++    }
++
++    fn hash(&self) -> u64 {
++        hash_slice(
++            &self.map
++                .iter()
++                .enumerate()
++                .filter(|(_, x)| &0u8 != *x)
++                .flat_map(|(i, x)| [i, *x as usize])
++                .collect::<Vec<usize>>()
++            )
++    }
++
++    #[inline]
++    fn initial(&self) -> u8 {
++        self.initial
++    }
++
++    #[inline]
++    fn initial_mut(&mut self) -> &mut u8 {
++        &mut self.initial
++    }
++
++    #[inline]
++    fn set_initial(&mut self, initial: u8) {
++        self.initial = initial;
++    }
++
++    fn to_vec(&self) -> Vec<u8> {
++        self.as_slice().to_vec()
++    }
++}
++
++impl AsSlice<u8> for BijonObserver {
++    #[must_use]
++    #[inline]
++    fn as_slice(&self) -> &[u8] {
++        self.map.as_slice()
++    }
++}
++impl AsMutSlice<u8> for BijonObserver {
++    #[must_use]
++    #[inline]
++    fn as_mut_slice(&mut self) -> &mut [u8] {
++        self.map.as_mut_slice()
++    }
++}
++
++impl BijonObserver {
++    /// Creates a new [`MapObserver`]
++    #[must_use]
++    pub fn new(limit: usize) -> Self {
++        Self {
++            map: vec![],
++            edges: HashMap::new(),
++            initial: 0,
++            prev: 0,
++            upper_limit: limit,
++        }
++    }
++}
++
++impl IBananaFeedback for BijonObserver {
++    /// externall call from bananafzz
++    #[must_use]
++    fn add_node(&mut self, nodex: &[u8]) {
++        let prev = self.prev;
++        let node = hash_slice(nodex) as usize;
++        self.prev = node >> 1;
++
++        if 0 == prev {
++            return
++        }
++
++        let key = prev ^ node;
++        if self.edges.contains_key(&key) {
++            if 1 == nodex.len() {
++                return self.map[self.edges[&key]] = 1
++            }
++            return self.map[self.edges[&key]] += 1
++        }
++
++        self.edges.insert(key, self.map.len());
++        self.map.push(1);
++    }
++}
+diff --git a/libafl/src/observers/map.rs b/libafl/src/observers/map.rs
+index 67a3186b..73ace31c 100644
+--- a/libafl/src/observers/map.rs
++++ b/libafl/src/observers/map.rs
+@@ -25,10 +25,6 @@ use crate::{
+     Error,
+ };
+ 
+-use hashbrown::HashMap;
+-
+-use libbijon::IBananaFeedback;
+-
+ /// Compute the hash of a slice
+ fn hash_slice<T: PrimInt>(slice: &[T]) -> u64 {
+     let mut hasher = AHasher::new_with_keys(0, 0);
+@@ -1029,190 +1025,3 @@ where
+         self.maps.iter().flatten()
+     }
+ }
+-
+-
+-use std::sync::RwLock;
+-use std::sync::RwLockWriteGuard;
+-
+-lazy_static! {
+-    static ref BANANA_FEEDBACK: RwLock<Vec<Vec<u8>>> = RwLock::new(vec![]);
+-}
+-
+-#[no_mangle]
+-fn banana_feedback<'a>() -> RwLockWriteGuard<'a, Vec<Vec<u8>>> {
+-    BANANA_FEEDBACK.write().unwrap()
+-}
+-
+-
+-// #############################################################
+-//
+-//
+-/// bijon for bananafuzzer
+-#[derive(Serialize, Deserialize, Debug)]
+-#[allow(clippy::unsafe_derive_deserialize)]
+-pub struct BijonObserver {
+-    map: Vec<u8>,
+-    edges: HashMap<usize, usize>,
+-    initial: u8,
+-    prev: usize,
+-    upper_limit: usize,
+-}
+-
+-impl<I, S> Observer<I, S> for BijonObserver
+-where
+-    Self: MapObserver,
+-{
+-    #[inline]
+-    fn pre_exec(&mut self, _state: &mut S, _input: &I) -> Result<(), Error> {
+-//        assert!(0 == BANANA_FEEDBACK.write().unwrap().clear());
+-        BANANA_FEEDBACK
+-            .write().unwrap()
+-            .clear();
+-
+-        self.prev = 0;
+-        self.reset_map()
+-    }
+-    #[inline]
+-    fn post_exec(&mut self, _state: &mut S, _input: &I) -> Result<(), Error> {
+-        BANANA_FEEDBACK
+-            .write().unwrap()
+-            .drain(..)
+-            .for_each(|ref node| self.add_node(node));
+-        Ok(())
+-    }
+-}
+-
+-impl Named for BijonObserver {
+-    #[inline]
+-    fn name(&self) -> &str {
+-        "B-IJON MAP"
+-    }
+-}
+-
+-impl HasLen for BijonObserver {
+-    #[inline]
+-    fn len(&self) -> usize {
+-        self.upper_limit
+-    }
+-}
+-
+-impl<'it> IntoIterator for &'it BijonObserver {
+-    type Item = <Iter<'it, u8> as Iterator>::Item;
+-    type IntoIter = Iter<'it, u8>;
+-
+-    fn into_iter(self) -> Self::IntoIter {
+-        self.as_slice().iter()
+-    }
+-}
+-
+-impl<'it> IntoIterator for &'it mut BijonObserver {
+-    type Item = <IterMut<'it, u8> as Iterator>::Item;
+-    type IntoIter = IterMut<'it, u8>;
+-
+-    fn into_iter(self) -> Self::IntoIter {
+-        self.as_mut_slice().iter_mut()
+-    }
+-}
+-
+-impl MapObserver for BijonObserver {
+-    type Entry = u8;
+-
+-    #[inline]
+-    fn get(&self, pos: usize) -> &u8 {
+-        &self.as_slice()[pos]
+-    }
+-
+-    #[inline]
+-    fn get_mut(&mut self, idx: usize) -> &mut u8 {
+-        &mut self.as_mut_slice()[idx]
+-    }
+-
+-    #[inline]
+-    fn usable_count(&self) -> usize {
+-        self.as_slice().len()
+-    }
+-
+-    fn hash(&self) -> u64 {
+-        hash_slice(
+-            &self.map
+-                .iter()
+-                .enumerate()
+-                .filter(|(_, x)| &0u8 != *x)
+-                .flat_map(|(i, x)| [i, *x as usize])
+-                .collect::<Vec<usize>>()
+-            )
+-    }
+-
+-    #[inline]
+-    fn initial(&self) -> u8 {
+-        self.initial
+-    }
+-
+-    #[inline]
+-    fn initial_mut(&mut self) -> &mut u8 {
+-        &mut self.initial
+-    }
+-
+-    #[inline]
+-    fn set_initial(&mut self, initial: u8) {
+-        self.initial = initial;
+-    }
+-
+-    fn to_vec(&self) -> Vec<u8> {
+-        self.as_slice().to_vec()
+-    }
+-}
+-
+-impl AsSlice<u8> for BijonObserver {
+-    #[must_use]
+-    #[inline]
+-    fn as_slice(&self) -> &[u8] {
+-        self.map.as_slice()
+-    }
+-}
+-impl AsMutSlice<u8> for BijonObserver {
+-    #[must_use]
+-    #[inline]
+-    fn as_mut_slice(&mut self) -> &mut [u8] {
+-        self.map.as_mut_slice()
+-    }
+-}
+-
+-impl BijonObserver {
+-    /// Creates a new [`MapObserver`]
+-    #[must_use]
+-    pub fn new(limit: usize) -> Self {
+-        Self {
+-            map: vec![],
+-            edges: HashMap::new(),
+-            initial: 0,
+-            prev: 0,
+-            upper_limit: limit,
+-        }
+-    }
+-}
+-
+-impl IBananaFeedback for BijonObserver {
+-    /// externall call from bananafzz
+-    #[must_use]
+-    fn add_node(&mut self, nodex: &[u8]) {
+-        let prev = self.prev;
+-        let node = hash_slice(nodex) as usize;
+-        self.prev = node >> 1;
+-
+-        if 0 == prev {
+-            return
+-        }
+-
+-        let key = prev ^ node;
+-        if self.edges.contains_key(&key) {
+-            if 1 == nodex.len() {
+-                return self.map[self.edges[&key]] = 1
+-            }
+-            return self.map[self.edges[&key]] += 1
+-        }
+-
+-        self.edges.insert(key, self.map.len());
+-        self.map.push(1);
+-    }
+-}
+diff --git a/libafl/src/observers/mod.rs b/libafl/src/observers/mod.rs
+index 6df2c65e..ac71c9d4 100644
+--- a/libafl/src/observers/mod.rs
++++ b/libafl/src/observers/mod.rs
+@@ -6,6 +6,9 @@ pub use map::*;
+ pub mod cmp;
+ pub use cmp::*;
+ 
++pub mod bijon;
++pub use bijon::*;
++
+ pub mod concolic;
+ 
+ #[cfg(unstable_feature)]
+diff --git a/libafl/src/stages/power.rs b/libafl/src/stages/power.rs
+index 82b80e24..378f9857 100644
+--- a/libafl/src/stages/power.rs
++++ b/libafl/src/stages/power.rs
+@@ -3,9 +3,11 @@
+ use alloc::string::{String, ToString};
+ use core::{fmt::Debug, marker::PhantomData};
+ 
++use hashbrown::HashSet;
++
+ use crate::{
+     events::{EventFirer, LogSeverity},
+-    corpus::{Corpus, DropoutsMetadata, IsFavoredMetadata, PowerScheduleTestcaseMetaData, Testcase},
++    corpus::{Corpus, DropoutInfo, DropoutsMetadata, IsFavoredMetadata, PowerScheduleTestcaseMetaData, Testcase},
+     executors::{Executor, HasObservers},
+     fuzzer::{Evaluator,ExecuteInputResult},
+     inputs::Input,
+@@ -114,7 +116,7 @@ where
+                 .borrow_mut()
+                 .load_input()?
+                 .clone();
+-
++println!("fuzzing #{corpus_idx} {i}x");
+             self.mutator_mut().mutate(state, &mut input, i as i32)?;
+ 
+             let (exit_reason, corpus_idx_ex) = fuzzer.evaluate_input(state, executor, manager, input)?;
+@@ -184,7 +186,7 @@ where
+             manager.log(
+                 state,
+                 LogSeverity::Warn,
+-    format!("{corpus_idx}::{name} errored at : {:?}", (i, n_err))
++                format!("{corpus_idx}::{name} errored at ({i}/{n_err})")
+             )?;
+         }
+ 
+@@ -215,17 +217,16 @@ where
+     ) -> Result<(), Error> {
+ 
+         let ret = self.perform_mutational(fuzzer, executor, state, manager, corpus_idx);
+-
+-        let mut to_drop = if let Some(dropouts) = state
++        let mut to_drop = if let Some(ref mut dropouts) = state
+             .metadata_mut()
+             .get_mut::<DropoutsMetadata>() {
+-            dropouts.list.drain(..).collect::<Vec<(usize, usize)>>()
++            dropouts.list.drain(..).collect::<Vec<DropoutInfo>>()
+         } else { return ret };
+ 
++        let mut droped = HashSet::new(); // this is questionable if we should handle here
++        // or we should provide solid one way drop list ..
+         while 0 != to_drop.len() {
+-            let (_, tgt) = to_drop[0];
+-//            let hot = state.corpus_mut().remove(tgt)?.unwrap();
+-//            state.corpus_mut().replace(src, hot)?;
++            let tgt = to_drop[0].tgt;
+ 
+             // bit counterintutive, but hacked version of replace
+             // it will replace only if it is free slot
+@@ -234,14 +235,16 @@ where
+             // in fact it calls : update_head_at which make more sense as a name
+             state.corpus_mut().replace(tgt, Testcase::<I>::default())?;
+ 
+-            to_drop
+-                .drain_filter(|&mut (_, idx)| idx == tgt)
+-//                .filter(|&(idx, _)| idx != tgt)
+-                .for_each(|(idx, _)| {
+-                    assert!(idx != tgt);
+-                    // all removes will redirect to tgt now !!
+-                    state.corpus_mut().remove(idx).unwrap();
+-                });
++            while 0 != to_drop.len() 
++                && tgt == to_drop[0].tgt
++            {
++                let info = to_drop.remove(0);
++                assert!(info.idx != tgt);
++                if !droped.contains(&info.idx) {
++                    state.corpus_mut().remove(info.idx).unwrap();
++                } 
++                droped.insert(info.idx);
++            }
+         }
+ 
+         ret
 -- 
 2.34.1
 
