@@ -27,9 +27,9 @@ However [mutation logic of LibAFL](https://github.com/rezer0dai/LibAFL/blob/smb2
 - Rotation AFL Buffer
   + countering *E. Minimization* section of https://www.s3.eurecom.fr/docs/fuzzing22_fioraldi_report.pdf
     * idea here is to instead of keeping fixed minimal corpora, minimal set of inputs trigering same feedback coverage, you will exchange, rotate, entries for the newest one which cover part of corpora which was fuzzed extensively. Aka seems older input, covering part of that coverage, seems does not brings anything new at this point, so changing it for the newest one covering particular part of same corpora should not bring any harm - except breaking "minimal" word from equation. To note, it means that previously edges, when talking about code coverage, A B C D were covered by input1, but now edges A and D are covered by input2, edge B by input 1, and edge C by input 3, quite plausible scenario. Note that expansion of minimal is linear to the unique edges count, which is not too bad.
-    * UPDATE : added [MinMax](https://github.com/rezer0dai/LibAFL/blob/rotator/libafl/src/corpus/rotator.rs#L392-L401) buffer to keep diversity of fuzzing inputs
+    * UPDATE : added [HeatMap](https://github.com/rezer0dai/LibAFL/blob/rotator/libafl/src/corpus/rotator.rs#L467-L482) for breaktrough and [MinMax](https://github.com/rezer0dai/LibAFL/blob/rotator/libafl/src/corpus/rotator.rs#L392-L401) buffer to keep diversity of fuzzing inputs
   + implementation is based on several parts working together
-    * core [minimizer](https://github.com/rezer0dai/LibAFL/blob/rotator/libafl/src/corpus/rotator.rs#L467-L482) logic
+    * core [minimizer](https://github.com/rezer0dai/LibAFL/blob/rotator/libafl/src/corpus/rotator.rs#L147-L206) logic
     * [passtrough](https://github.com/rezer0dai/LibAFL/blob/smb2/libafl/src/feedbacks/map.rs#L655-L679) **all fuzzed inputs** into minimizer
     * [heavy modification](https://github.com/rezer0dai/bananafzz/blob/smb2/tools/patches/libafl-bijon-rotator-bfl.patch#L1688-L1913) ondisk [corpus logic](https://github.com/rezer0dai/LibAFL/blob/rotator/libafl/src/corpus/ondisk.rs#L170-L195) to allow progressive add + remove of entries alongside with RAFLB ( worth to check if it is OK to easier logic a bit based on certain constrains which are now, in this state of implementation, clear )
 
