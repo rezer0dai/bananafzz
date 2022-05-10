@@ -2,12 +2,12 @@ use std::collections::HashMap;
 
 use generator::arg::Arg;
 
-use super::super::banana::bananaq::FuzzyQ;
 use super::super::banana::bananaq;
+use super::super::banana::bananaq::FuzzyQ;
 use std::sync::Weak;
 
-use super::id::CallTableId;
 use super::fd_info::CallInfo;
+use super::id::CallTableId;
 
 /// will describle (sys)call ( or other mechanism api/io .. )
 pub struct Call {
@@ -39,7 +39,7 @@ pub struct Call {
     ///         ..
     ///     }}
     /// ```
-    ccall: fn(args: &mut[Arg]) -> CallInfo,
+    ccall: fn(args: &mut [Arg]) -> CallInfo,
     n_attempts: usize,
 }
 
@@ -81,19 +81,18 @@ impl Call {
         id: CallTableId,
         name: &'static str,
         args: Vec<Arg>,
-        ccall: fn(ctx: &mut[Arg]) -> CallInfo
-        ) -> Call
-    {
+        ccall: fn(ctx: &mut [Arg]) -> CallInfo,
+    ) -> Call {
         Call {
-            id : id,
-            name : name,
-            einfo : CallInfo::fail(0),//0 should be undefined kin!
-            total : 0,
-            allowed : 0,
-            success : 0,
-            args : args,
-            ccall : ccall,
-            n_attempts : 0,
+            id: id,
+            name: name,
+            einfo: CallInfo::fail(0), //0 should be undefined kin!
+            total: 0,
+            allowed: 0,
+            success: 0,
+            args: args,
+            ccall: ccall,
+            n_attempts: 0,
         }
     }
 
@@ -104,7 +103,7 @@ impl Call {
     /// 3. (do_call_impl)invoke callbacks to all modules -> forward this job to Banana Internal Manager in fact ..
     /// 4. (do_call_impl)invoke function responsible to invoke targeted call
     /// 5. store results
-    pub fn do_call(&mut self, bananaq: &Weak<FuzzyQ>, fd: &[u8], shared: &mut[u8]) -> bool {
+    pub fn do_call(&mut self, bananaq: &Weak<FuzzyQ>, fd: &[u8], shared: &mut [u8]) -> bool {
         self.n_attempts += 1;
 
         self.total += 1;
@@ -113,7 +112,7 @@ impl Call {
         }
 
         if !self.do_call_safe(bananaq) {
-            return false
+            return false;
         }
 
         for arg in self.args.iter_mut() {
@@ -129,21 +128,21 @@ impl Call {
     }
 
     pub fn dump_mem(&self) -> Vec<u8> {
-        self.args//or do .extend( in for loop
+        self.args //or do .extend( in for loop
             .iter()
-            .map(|ref arg| { arg.data().to_vec() })
+            .map(|ref arg| arg.data().to_vec())
             .flat_map(move |data| data)
-            .collect::< Vec<u8> >()
+            .collect::<Vec<u8>>()
     }
     pub fn dump_args(&self) -> Vec<u8> {
         self.args
             .iter()
             .map(|ref arg| arg.dump())
             .flat_map(move |data| data)
-            .collect::< Vec<u8> >()
+            .collect::<Vec<u8>>()
     }
 
-    pub fn load_args(&mut self, dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) {
+    pub fn load_args(&mut self, dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>, Vec<u8>>) {
         let mut off = 0;
         let mut off_mem = 0;
         for arg in self.args.iter_mut() {
@@ -154,14 +153,14 @@ impl Call {
         }
     }
 
-/// 1. notify observers and ask for aproval
-/// 2. if approved invoke syscall
-/// 3. have in mind that in case of single thread approach this need to be locked!
-///     - therefore do_call_safe wrapper there..
+    /// 1. notify observers and ask for aproval
+    /// 2. if approved invoke syscall
+    /// 3. have in mind that in case of single thread approach this need to be locked!
+    ///     - therefore do_call_safe wrapper there..
     fn do_call_impl(&mut self, bananaq: &Weak<FuzzyQ>) -> bool {
         if !bananaq::call_notify(bananaq, self) {
-//panic!("OBSERVER BLOCKING");
-            return false
+            //panic!("OBSERVER BLOCKING");
+            return false;
         }
         //we want total here, otherwise calling call.dead() will be effectivelly the same as config.n_failed_notify_allowed
         self.allowed += 1;
@@ -169,55 +168,77 @@ impl Call {
         self.einfo = (self.ccall)(&mut self.args);
         true
     }
-/// do sync in case of single thread config flag set
-///
-/// - poc creation from fuzzing loops
-/// - code coverage ( because we need to repro fuzzed loops to benefit from code coverage .. )
-/// - ??
+    /// do sync in case of single thread config flag set
+    ///
+    /// - poc creation from fuzzing loops
+    /// - code coverage ( because we need to repro fuzzed loops to benefit from code coverage .. )
+    /// - ??
     fn do_call_safe(&mut self, bananaq: &Weak<FuzzyQ>) -> bool {
-        return self.do_call_impl(bananaq)
+        return self.do_call_impl(bananaq);
     }
 
     /// print call to string that way we can reproduce it from PoC ( mini c++ program ) later
     ///
     /// note : this schema is novel fuzzing approach : LOOP + Generation based
     pub fn serialize(&self, fd: &[u8], shared: &[u8]) -> String {
-        (self.name.to_string() + "(void" +
-            &self.args
+        (self.name.to_string()
+            + "(void"
+            + &self
+                .args
                 .iter()
                 .enumerate()
                 .map(|(ind, arg)| {
                     let mut data = arg.do_serialize(fd, shared);
                     if data[..3].contains("new") {
-                        data = String::from("(") +
-                            self.name +
-                            &ind.to_string() +
-                            "*)" + &data
+                        data = String::from("(") + self.name + &ind.to_string() + "*)" + &data
                     }
                     String::from(",\n\t") + &data
                 })
-                .collect::<String>() +
-            ");")
-                .replace("void,", "")
+                .collect::<String>()
+            + ");")
+            .replace("void,", "")
     }
 
-    pub fn name(&self) -> &str { self.name }
-    pub fn id(&self) -> CallTableId { self.id.clone() }
-    pub fn total(&self) -> usize { self.total }
-    pub fn allowed(&self) -> usize { self.allowed }
-    pub fn success(&self) -> usize { self.success }
-    pub fn ok(&self) -> bool { self.einfo.success() }
-    pub fn dead(&self, dead_ratio: f64) -> bool { 
-        dead_ratio > (1 + self.success) as f64 / (1 + self.allowed) as f64 
+    pub fn name(&self) -> &str {
+        self.name
     }
-    pub fn einfo(&self) -> &[u8] { &self.einfo.extra_info() }
-    pub fn kin(&self) -> usize { self.einfo.kin() }
-    pub fn n_attempts(&self) -> usize { self.n_attempts }
+    pub fn id(&self) -> CallTableId {
+        self.id.clone()
+    }
+    pub fn total(&self) -> usize {
+        self.total
+    }
+    pub fn allowed(&self) -> usize {
+        self.allowed
+    }
+    pub fn success(&self) -> usize {
+        self.success
+    }
+    pub fn ok(&self) -> bool {
+        self.einfo.success()
+    }
+    pub fn dead(&self, dead_ratio: f64) -> bool {
+        dead_ratio > (1 + self.success) as f64 / (1 + self.allowed) as f64
+    }
+    pub fn einfo(&self) -> &[u8] {
+        &self.einfo.extra_info()
+    }
+    pub fn kin(&self) -> usize {
+        self.einfo.kin()
+    }
+    pub fn n_attempts(&self) -> usize {
+        self.n_attempts
+    }
 
-    pub fn neg_ret(&mut self) { self.einfo.negate() }
+    pub fn neg_ret(&mut self) {
+        self.einfo.negate()
+    }
 
-    pub fn n_args(&self) -> usize { self.args.len() }
+    pub fn n_args(&self) -> usize {
+        self.args.len()
+    }
 
-    pub fn args_view(&self, ind: usize) -> &Arg { &self.args[ind] }
+    pub fn args_view(&self, ind: usize) -> &Arg {
+        &self.args[ind]
+    }
 }
-

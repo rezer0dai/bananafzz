@@ -16,16 +16,16 @@ pub struct DeRef {
 }
 
 impl DeRef {
-    pub fn new(size: usize) -> Bfl::<DeRef> {
+    pub fn new(size: usize) -> Bfl<DeRef> {
         Bfl::new(DeRef {
-            size : size,
-            offset : 0
+            size: size,
+            offset: 0,
         })
     }
-    pub fn partial(offset: usize, size: usize) -> Bfl::<DeRef> {
+    pub fn partial(offset: usize, size: usize) -> Bfl<DeRef> {
         Bfl::new(DeRef {
-            size : size,
-            offset : offset,
+            size: size,
+            offset: offset,
         })
     }
 }
@@ -33,23 +33,29 @@ impl DeRef {
 /// Backbone of whole state fuzzing
 impl ISerializableArg for DeRef {
     fn serialize(&self, _: &[u8], fd: &[u8], _: &[u8]) -> Vec<SerializationInfo> {
-        vec![
-            SerializationInfo {
-                offset : 0,
-                prefix : String::from("state_fd(fd_") +
-                    &generic::u8_to_str(fd) + ", " +
-                    &self.offset.to_string() + "," +
-                    &self.size().to_string() + ",",
-            }]
+        vec![SerializationInfo {
+            offset: 0,
+            prefix: String::from("state_fd(fd_")
+                + &generic::u8_to_str(fd)
+                + ", "
+                + &self.offset.to_string()
+                + ","
+                + &self.size().to_string()
+                + ",",
+        }]
     }
 }
 
 impl IArgLeaf for DeRef {
-    fn size(&self) -> usize { self.size }
+    fn size(&self) -> usize {
+        self.size
+    }
 
-    fn name(&self) -> &'static str { "Fd" }
+    fn name(&self) -> &'static str {
+        "Fd"
+    }
 
-    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], _: &[u8]) {
-      mem.copy_from_slice(&fd[self.offset..self.offset+self.size]);
+    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut [u8], fd: &[u8], _: &[u8]) {
+        mem.copy_from_slice(&fd[self.offset..self.offset + self.size]);
     }
 }

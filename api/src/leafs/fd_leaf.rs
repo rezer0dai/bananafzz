@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 extern crate rand;
-use rand::Rng;
 use rand::seq::SliceRandom;
+use rand::Rng;
 
 extern crate generic;
 
@@ -17,9 +17,9 @@ use std::sync::Weak;
 
 use self::core::exec::fd_info::Fd;
 
+use super::bfl_leaf::Bfl;
 use super::const_leaf::Const;
 use super::phantom_leaf::Phantom;
-use super::bfl_leaf::Bfl;
 
 /// state fd for interconnected behaviour
 /// - define our state object
@@ -29,7 +29,7 @@ pub struct FdHolder {
     fds: Vec<Box<dyn IArgLeaf>>,
 }
 impl FdHolder {
-    pub fn new(size: usize, fds: Vec<Box<dyn IArgLeaf>>) -> Bfl::<FdHolder> {
+    pub fn new(size: usize, fds: Vec<Box<dyn IArgLeaf>>) -> Bfl<FdHolder> {
         if fds.iter().any(|fd| fd.size() > size) {
             panic!("FdHolder::new .. one of fd have bigger size than declared!")
         }
@@ -39,10 +39,10 @@ impl FdHolder {
             fds: fds,
         })
     }
-    pub fn dup(fd: &[u8]) -> Bfl::<FdHolder> {
+    pub fn dup(fd: &[u8]) -> Bfl<FdHolder> {
         FdHolder::new(fd.len(), vec![Box::new(Const::new(fd))])
     }
-    pub fn holder(size: usize) -> Bfl::<FdHolder> {
+    pub fn holder(size: usize) -> Bfl<FdHolder> {
         FdHolder::new(size, vec![Box::new(Phantom::new(size))])
     }
 }
@@ -54,10 +54,21 @@ impl ISerializableArg for FdHolder {
             prefix: String::from("shared_fd(fd_") + &generic::u8_to_str(mem) + ",",
         }]
     }
-    fn load(&mut self, mem: &mut[u8], _dump: &[u8], poc_fd: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
-        assert!(poc_fd.len() == mem.len(), "[BFL] we got strange poc_fd {:?} should be of size {}", poc_fd, mem.len());
+    fn load(
+        &mut self,
+        mem: &mut [u8],
+        _dump: &[u8],
+        poc_fd: &[u8],
+        fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
+    ) -> usize {
+        assert!(
+            poc_fd.len() == mem.len(),
+            "[BFL] we got strange poc_fd {:?} should be of size {}",
+            poc_fd,
+            mem.len()
+        );
         mem.clone_from_slice(&fd_lookup[poc_fd]);
-        0 
+        0
     }
 }
 impl IArgLeaf for FdHolder {
@@ -69,7 +80,13 @@ impl IArgLeaf for FdHolder {
         "Fd"
     }
 
-    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], fd: &[u8], shared: &[u8]) {
+    fn generate_unsafe(
+        &mut self,
+        bananaq: &Weak<FuzzyQ>,
+        mem: &mut [u8],
+        fd: &[u8],
+        shared: &[u8],
+    ) {
         self.fds
             .choose_mut(&mut rand::thread_rng())
             .unwrap()
@@ -83,7 +100,7 @@ pub struct RndFd {
 }
 
 impl RndFd {
-    pub fn new(id: StateTableId, size: usize) -> Bfl::<RndFd> {
+    pub fn new(id: StateTableId, size: usize) -> Bfl<RndFd> {
         Bfl::new(RndFd { id: id, size: size })
     }
 }
@@ -101,13 +118,14 @@ impl IArgLeaf for RndFd {
     ///
     /// other time we provide NULL or invalid one
     fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], _: &[u8], _: &[u8]) {
-        match rand::thread_rng().gen_range(0u8..=7) {
+        // for soly we skip dummy & invalid
+        match rand::thread_rng().gen_range(2u8..=7) {
             0 => mem.clone_from_slice(&Fd::dummy(self.size()).data()),
             1 => mem.clone_from_slice(&Fd::invalid(self.size()).data()),
             _ => {
                 mem.clone_from_slice(&Fd::dummy(self.size()).data());
 
-                let fd = match bananaq::get_rnd_fd(bananaq, self.id.clone()) {
+                let fd = match bananaq::get_rnd_fd(bananaq, self.id.clone(), self.size) {
                     Ok(fd) => fd,
                     Err(_) => return,
                 };
