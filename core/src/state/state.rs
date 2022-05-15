@@ -171,7 +171,7 @@ impl State {
         let bananaq = &self.info.bananaq;
 
         let mut i = 0;
-        for _ in 0u32.. {
+        for _ in 0u16.. {
             i += 1;
             if !bananaq::is_active(&self.info.bananaq())? {
                 break
@@ -183,7 +183,8 @@ impl State {
                     .do_call(&bananaq, &fd.data(), shared) 
             { return Ok(()) }
 
-            thread::sleep(Duration::from_nanos(1));
+            // ok do some proportional way wait
+            thread::sleep(Duration::from_nanos(1 + 100 * self.call_view().n_attempts() as u64));
 
             if self.groups[self.ccache.0]
                 .iter()
@@ -232,8 +233,7 @@ impl State {
     }
     /// update slopes - state of current State, that we can proceed to fuzz next layer of syscalls
     fn do_fuzz_update_impl(&mut self) -> Result<(), String> {
-while usize::MAX == self.info.level { println!("DTOR CALLED UPDATE CALLED TOO!!") }
-        assert!(usize::MAX != self.info.level);
+        assert!(usize::MAX != self.info.level, "DTOR CALLED UPDATE CALLED TOO!!");
 
         let mut call = &mut self.groups[self.ccache.0][self.ccache.1];
         let ok = if call.ok() { 1 } else { 0 };

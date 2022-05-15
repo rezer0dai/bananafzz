@@ -1,3 +1,6 @@
+extern crate log;
+use self::log::{trace, debug, info, warn, error};
+
 use std::{
     mem::size_of,
     collections::{BTreeMap,HashMap,BTreeSet,HashSet},
@@ -9,7 +12,7 @@ use core::state::state::StateInfo;
 use core::banana::bananaq;
 
 use repro::PocCall;
-use poc::PocData;
+use poc::{PocData, INCOMPLETE};
 pub use info::{BananizedFuzzyLoopConfig, PocCallHeader};
 
 extern crate rand;
@@ -20,6 +23,14 @@ type TFdLookup = HashMap< Vec<u8>, Vec<u8> >;
 
 type TUidOnce = BTreeSet<u64>;
 type TFdOnce = HashSet< Vec<u8> >;
+
+macro_rules! call_attempts {
+    ($call:expr, $state:expr, $n_attempts:expr) => {
+        if 0 != $state.level {
+            $call.attempts($n_attempts)
+        } else { 0 }
+    };
+}
 
 pub struct BananizedFuzzyLoop {
     cfg: BananizedFuzzyLoopConfig,
@@ -110,10 +121,10 @@ impl BananizedFuzzyLoop {
         let max_n_try = self.cfg.max_allowed_wait_count_per_call as f64 * 0.8;
         let n_try = 1.0 * (n_attempts % self.cfg.max_allowed_wait_count_per_call) as f64;
         if max_n_try > n_try // seems too in-efficient to do ?
-            && self.n_attempts < 50
+            && self.n_attempts < 200 //50
             && self.passed < 10
         { // if all good, then we just need to try little more
-if self.cfg.debug { println!("atempts are good, try harder => {:?} /{n_attempts}", self.poc_ind); }
+trace!("atempts are good, try harder => {:?} /{n_attempts}", self.poc_ind);
             return false
         }
 
@@ -130,79 +141,85 @@ if self.cfg.debug { println!("atempts are good, try harder => {:?} /{n_attempts}
             && !self.poc.is_last_call(1 + self.poc_ind)//this does not make sense to enable
 //        { return self.poc.add_one(self.poc_ind) }
         { 
-if self.cfg.debug { println!("@@@@@@@@@@@@@@@@@@@@@@@@ adding one more to fuzz ({:?} x {:?}) || stats => {:?}", (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed)); }
+info!("@@@@@@@@@@@@@@@@@@@@@@@@ adding one more to fuzz ({:?} x {:?}) || stats => {:?}", (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed));
             return self.poc.add_one(self.poc_ind) 
         }
+
+        let poc = PocCall::new(&self.poc.load(self.poc_ind));
 
         self.poc.skip(self.poc_ind);
         self.poc_ind += 1;
         self.fuzzy_cnt = 0;
-if self.cfg.debug { println!("$$$$$$$$$$$$$$$$$$$$$$$$ lets do skip ({:?} x {:?}) || stats : [{:?}] add_prob:{:?}", (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed), add_prob); }
+warn!("$$$$$$$$$$$$$$$$$$$$$$$$ lets do skip, incomplete, [call : {:X}]({:?} x {:?}) || stats : [{:?}] add_prob:{:?}", poc.info.cid, (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed), add_prob);
+
+        unsafe { INCOMPLETE = true }
         return false
     }
     fn notify_locked_repro(&mut self, state: &StateInfo, call: &mut Call) -> bool {
-if self.cfg.debug { println!("nbotify ->  {:?} <{:?}>", state.uid(), self.poc.info.calls_count) }
+trace!("nbotify ->  {:?} <{:?}>", state.uid(), self.poc.info.calls_count);
         if self.poc_ind == self.poc.max_ind() {
-if self.cfg.debug { println!("pocind") }
+debug!("pocind");
             return false //last one was ctor, skip this call and start fuzzy-generate
         }
-        self.n_attempts += 1;
+        if 0 != state.level {
+            self.n_attempts += 1;
+        }
         let poc = PocCall::new(&self.poc.load(self.poc_ind));
 
         if u64::from(state.id) != poc.info.sid {
             // should not happen if environment is predictable
             // though when we use splice or insert, we messing with this
         // aka environnment of origina POC is changed
-if self.cfg.debug { println!("#sid (object:{:?}; bananaq.len={:?}) stop or forcese  [{:?}/{:?}] -> <{:?}][{:?}> last_call {:?}", state.uid(), bananaq::len(&state.bananaq).unwrap(), self.poc_ind, self.poc.info.calls_count, u64::from(state.id), poc.info.sid, self.poc.is_last_call(1 + self.poc_ind)) }
-            return self.stop_or_force(call.n_attempts(), 0.7)
+debug!("#sid (object:{:?}; bananaq.len={:?}) stop or forcese  [{:?}/{:?}] -> <{:?}][{:?}> last_call {:?}", state.uid(), bananaq::len(&state.bananaq).unwrap(), self.poc_ind, self.poc.info.calls_count, u64::from(state.id), poc.info.sid, self.poc.is_last_call(1 + self.poc_ind));
+            return self.stop_or_force(call_attempts!(call, state, self.n_attempts), 0.7)
 //            return false
         }
 
         if !state.fd.is_invalid() // need to here cuz dupped
             && !self.resolve_fid(&poc.fid, state.fd.data()) {
-if self.cfg.debug { println!("fid") }
+error!("fid --> {:?}", (poc.fid, state.fd.data()));
             return false
         }
 
         if !self.resolve_uid(poc.info.uid, state.uid()) {
-if self.cfg.debug { println!("uid : {:?} x {:?} \n\t FULL UID MAP {:?}", state.uid(), poc.info.uid, self.uid_lookup) }
+debug!("uid : {:?} x {:?} \n\t FULL UID MAP {:?}", state.uid(), poc.info.uid, self.uid_lookup);
             return false
         }//C&C iterative approach, as we monitoring it from the begining!! 
 
         if state.level != poc.info.level {
 
-if self.cfg.debug { println!("#levels {:?} stop or force in bananaq#{:X}", (state.level, poc.info.level), bananaq::qid(&state.bananaq).unwrap()) }
+debug!("#levels {:?} stop or force in bananaq#{:X}", (state.level, poc.info.level), bananaq::qid(&state.bananaq).unwrap());
 
             return self.stop_or_force(
-                call.n_attempts(), 
+                call_attempts!(call, state, self.n_attempts), 
                 if 0 != poc.info.level { 0.5 } else { 0.0 });
         }
-        
 
         //seems problem hereis poc.info.cid = 0, aka WTF ??
         if CallTableId::Id(poc.info.cid) != call.id() {
 
-if self.cfg.debug { println!("#cid stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).unwrap()) }
+debug!("#cid stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).unwrap());
 
 //for _ in 0..1000 { println!("cid with levels {:?}", (poc.info.level, state.level, poc.info.cid, call.id(), self.poc_ind)) }
-            return self.stop_or_force(call.n_attempts(), 0.0)//seems wanted call is dead ??
+            return self.stop_or_force(call_attempts!(call, state, self.n_attempts), 0.0)//seems wanted call is dead ??
         }
         self.n_attempts = 0;
         self.passed += 1;
         if self.passed > 10 {//call.n_attempts() % 10 { // ok seems upper layer plugins holding it off
 
-if self.cfg.debug { println!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).unwrap()) }
+debug!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).unwrap());
 
-            return self.stop_or_force(call.n_attempts(), 1.0)//try add something
+            return self.stop_or_force(call_attempts!(call, state, self.n_attempts), 1.0)//try add something
         }
 
         if self.ctor_done { // OK, AFL did good job if ctor
 /****************************/
 /* DOING REPRO on this call */
 /****************************/
+trace!("---> [fid : {:?}] : loading ARG : {:?} and {:?}", poc.fid, poc.dmp.len(), poc.mem.len());
             call.load_args(&poc.dmp, &poc.mem, &self.fid_lookup);
         } else {//AFL screwed ctor, we want to abandon fuzzing
-if self.cfg.debug { println!("STOP2") }
+error!("STOP2");
             bananaq::stop(&state.bananaq).unwrap();
             return false
             // another option, is let it bananafuzzer fix it
@@ -219,7 +236,7 @@ if self.cfg.debug { println!("STOP2") }
         true
     }
     fn aftermath_repro(&mut self, state: &StateInfo, call: &mut Call) {
-//println!("APPROVED");
+trace!("APPROVED");
         // we need to do per AFL fuzz_one, to keep state info up to data
         // how we do it ? AFL forward us *CONST data, we transmute to *MUT ..
         // ok for InMemory fuzzing, for LibAFL Fork it will not work...
@@ -238,14 +255,18 @@ if self.cfg.debug { println!("STOP2") }
         if self.resolve_fid(&poc.fid, state.fd.data()) {
             return true
         }
+        
+println!("LOOKUP {:?}", self.fid_lookup);
+println!("ONCE {:?}", self.fid_once);
 // could happen once ctor StateIds/StateTableId < 0x10
-if self.cfg.debug { loop { println!("STOP3") } } // this should not happen
+error!("STOP3 {:?} vs {:?}", poc.fid, state.fd.data()); // this should not happen
         bananaq::stop(&state.bananaq).unwrap();
-        println!("[BFL] Overlapping fid at runtime: {:?} != {:?}\n\t=> {:?}", 
-            state.fd.data(), self.fid_lookup[&poc.fid], poc.fid);
+warn!("[BFL] Overlapping fid at runtime: {:?} != {:?}\n\t=> {:?}", 
+    state.fd.data(), self.fid_lookup, poc.fid);
         return false;
     }
     fn notify_ctor_locked_repro(&mut self, state: &StateInfo) -> bool {
+trace!("APPROVED-CTOR");
         if 0 == state.total {
             return true // dupped
         }
@@ -253,6 +274,8 @@ if self.cfg.debug { loop { println!("STOP3") } } // this should not happen
         if !self.verify_ctor(state) {
             return false
         }
+        self.poc.runtime(self.level, state.uid(), state.fd.data());
+trace!("APPROVED-REALZZ");
 
         self.poc_ind += 1;
         self.ctors_cnt += 1;
@@ -266,7 +289,7 @@ if self.cfg.debug { loop { println!("STOP3") } } // this should not happen
     pub fn notify_locked_fuzzy(&mut self, state: &StateInfo, call: &mut Call) -> bool {
 
         if !self.poc.do_gen() && !self.poc.is_last_call(self.poc_ind) {
-if self.cfg.debug { println!("STOP4") }
+error!("STOP4");
             bananaq::stop(&state.bananaq).unwrap();
             return false
         }
@@ -280,7 +303,7 @@ if self.cfg.debug { println!("STOP4") }
             self.fuzzy_uid = state.uid()
         } else if state.uid() != self.fuzzy_uid {
 
-if self.cfg.debug { println!("[bfl] denied-fuzzy-insert") }
+trace!("[bfl] denied-fuzzy-insert");
 
             return false // waiting for ctor
         }
@@ -288,6 +311,7 @@ if self.cfg.debug { println!("[bfl] denied-fuzzy-insert") }
 /*****************************/
 /* DUMPING for repro and BFL */
 /*****************************/
+trace!("........OK WE DUMPING A CALL!!! {:?}", state.uid());
         self.call_data = PocCall::dump_call(call, state.id.into(), &state.fd, state.uid(), state.level);
 
         self.level = state.level;
@@ -298,19 +322,28 @@ if self.cfg.debug { println!("[bfl] denied-fuzzy-insert") }
             || 0 == self.call_data.len() 
         { return bananaq::stop(&state.bananaq).unwrap() }
 
+//allow for next fuzzy call in other state.uid / thread / object
+        self.fuzzy_uid = 0;
+        let call_data: Vec<u8> = self.call_data.drain(..).collect();
+
+        if !call.ok() {
+trace!("FUZZY CAIL SOLY-SUCKS");
+//seems garbage call, skip from BFL ~ well this is for SOLY, no good for general code cov..
+            return
+        }
+
+trace!("OK AFTERMATHEREEEEEEEEEEEED");
+
         assert!(self.poc.do_gen() || self.poc.is_last_call(self.poc_ind));
 
         self.poc.runtime(self.level, state.uid(), state.fd.data());//also fid ?
-//allow for next fuzzy call in other state.uid / thread / object
-        self.fuzzy_uid = 0;
 //now load it to SHMEM -> should do exit process too!!
-        self.poc.push(self.poc_ind, &self.call_data, call.kin());
+        self.poc.push(self.poc_ind, &call_data, call.kin());
         if self.poc.share(self.cfg.pocmem) {
+trace!("-------- CALL : OK SHAAARE");
             return bananaq::stop(&state.bananaq).unwrap()
         }
 
-        self.call_data.clear();
-//if self.stop_fuzzing { println!("LEGIT : STOPY"); }
         if self.poc.is_last_call(1 + self.poc_ind)
             || self.poc.added > self.cfg.max_inserts
             || !rand::thread_rng().gen_bool(1.0 - self.poc.added as f64 / self.cfg.max_inserts as f64) 
@@ -330,7 +363,7 @@ if self.cfg.debug { println!("[bfl] denied-fuzzy-insert") }
         let poc = PocCall::new(&self.call_data);
         if state.uid() != poc.info.uid {
 
-if self.cfg.debug { println!("refusing ctor") }
+trace!("refusing ctor");
 
             return false
         }
@@ -344,6 +377,7 @@ if self.cfg.debug { println!("refusing ctor") }
         self.fuzzy_uid = 0;
         self.poc.push(self.poc_ind, &self.call_data, 0);//we avoid crossover over ctors ?
         if self.poc.share(self.cfg.pocmem) {
+trace!("-------- CTOR : OK SHAAARE");
             bananaq::stop(&state.bananaq).unwrap()
         }
         self.call_data.clear();
@@ -358,10 +392,9 @@ if self.cfg.debug { println!("refusing ctor") }
         if !bananaq::is_active(&state.bananaq).unwrap() {
             return false
         }
-//println!("locked notify all");
         if self.poc_ind > self.poc.max_ind() {
 
-if self.cfg.debug { println!("STOP5 {:?} / {:?}", (self.poc_ind, self.poc.max_ind()), self.poc.info.calls_count) }
+error!("STOP5 {:?} / {:?}", (self.poc_ind, self.poc.max_ind()), self.poc.info.calls_count);
 
             bananaq::stop(&state.bananaq).unwrap();
             return false
@@ -373,8 +406,7 @@ if self.cfg.debug { println!("STOP5 {:?} / {:?}", (self.poc_ind, self.poc.max_in
         }
     }
     pub fn notify_ctor_locked(&mut self, state: &StateInfo) -> bool {
-
-if self.cfg.debug { println!("NEW OBJECT!!! {:?} + {:?}", state.id, state.fd.data()) }
+trace!("NEW OBJECT!!! {:?} + {:?}", state.id, state.fd.data());
 
         if 0 == state.total {
             return true // racers always to be approved
@@ -393,16 +425,19 @@ if self.cfg.debug { println!("NEW OBJECT!!! {:?} + {:?}", state.id, state.fd.dat
         }
         self.passed = 0;
 
-if self.cfg.debug { println!("AFTERMATH OK") }
-
         if self.poc_ind < self.poc.max_ind() {
+trace!("AFTERMATH REPRO");
             self.aftermath_repro(state, call)
         } else {
+trace!("AFTERMATH FUZZY");
             self.aftermath_fuzzy(state, call)
         }
 
+        self.ctor_done = true;
+/*
         if !self.ctor_done {
             return bananaq::stop(&state.bananaq).unwrap()
         }
+*/
     }
 }

@@ -1,3 +1,6 @@
+extern crate log;
+use self::log::info;
+
 use std::backtrace::Backtrace;
 
 use super::observer::{ICallObserver, IStateObserver};
@@ -31,8 +34,10 @@ where
     F: FnMut(&mut RwLockWriteGuard<queue::FuzzyQ>) -> T,
 {
     if let Some(banana) = banana.upgrade() {
-        if let Ok(mut banana) = banana.write() {
-            return Ok(action(&mut banana));
+        loop {
+            if let Ok(mut banana) = banana.try_write() {
+                return Ok(action(&mut banana));
+            }
         }
     }
     Err("[fuzzing] main bananaq droped main reference")
@@ -108,22 +113,20 @@ pub fn config(bananaq: &Weak<FuzzyQ>) -> Result<FuzzyConfig, &'static str> {
     read_prot(bananaq, |banana| banana.cfg.clone())
 }
 pub fn stop(banana: &Weak<FuzzyQ>) -> Result<(), &'static str> {
-    if config(banana)?.noisy {
-        println!(
-            "[bananaq] QUEUE STOP: {:?}",
-            Backtrace::force_capture()
-                .frames()
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| (3..=4).contains(i))
-                .map(|(_, s)| format!("{:?}", s))
-                .collect::<Vec<String>>() ////            .nth(3)
-                                          //            .enumerate()
-                                          //            .map(|(i, s)| format!("\n [{i}] <{s:?}>"))
-                                          //            .collect::<Vec<String>>()
-                                          //            .join("\n")
-        );
-    }
+    info!(
+        "[bananaq] QUEUE STOP: {:?}",
+        Backtrace::force_capture()
+            .frames()
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| (3..=4).contains(i))
+            .map(|(_, s)| format!("{:?}", s))
+            .collect::<Vec<String>>() ////            .nth(3)
+                                      //            .enumerate()
+                                      //            .map(|(i, s)| format!("\n [{i}] <{s:?}>"))
+                                      //            .collect::<Vec<String>>()
+                                      //            .join("\n")
+    );
     read_prot(&banana, |banana| banana.stop())
 }
 

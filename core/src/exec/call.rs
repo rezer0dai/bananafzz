@@ -108,6 +108,9 @@ impl Call {
 
         self.total += 1;
         for arg in self.args.iter_mut() {
+            if 1 != self.n_attempts % 10 {
+                break; // observer may delay us cuz wait, but some time refresh 
+            }
             arg.do_generate(bananaq, fd, shared);
         }
 
@@ -227,6 +230,12 @@ impl Call {
         self.einfo.kin()
     }
     pub fn n_attempts(&self) -> usize {
+        self.n_attempts
+    }
+    pub fn attempts(&mut self, n_attempts: usize) -> usize {
+        if n_attempts > self.n_attempts {
+            self.n_attempts = 0
+        }
         self.n_attempts
     }
 

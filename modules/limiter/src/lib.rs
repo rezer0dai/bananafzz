@@ -6,15 +6,16 @@ extern crate serde;
 
 extern crate core;
 
-use core::exec::call::Call;
-use core::banana::observer::{ICallObserver, IStateObserver};
 use core::banana::bananaq;
+use core::banana::observer::{ICallObserver, IStateObserver};
+use core::exec::call::Call;
 use core::state::state::StateInfo;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct LimiterConfig {
+    only_sucks: bool,
     num_of_calls: u32,
     failed_limit: u32,
 }
@@ -26,15 +27,23 @@ struct Limiter {
 
 impl ICallObserver for Limiter {
     fn notify(&self, state: &StateInfo, _: &mut Call) -> bool {
-        if self.n_total.fetch_add(1, Ordering::Relaxed) < self.cfg.failed_limit { 
-            return true 
+        if 0 == self.cfg.failed_limit {
+            return true;
+        }
+        if self.n_total.fetch_add(1, Ordering::Relaxed) - self.counter.load(Ordering::Relaxed)
+            < self.cfg.failed_limit
+        {
+            return true;
         }
 
         bananaq::stop(&state.bananaq).unwrap();
         false
     }
-    fn aftermath(&self, state: &StateInfo, _: &mut Call) {
-        if self.counter.fetch_add(1, Ordering::Relaxed) > self.cfg.num_of_calls  {
+    fn aftermath(&self, state: &StateInfo, call: &mut Call) {
+        if self.cfg.only_sucks && !call.ok() {
+            return
+        }
+        if self.counter.fetch_add(1, Ordering::Relaxed) > self.cfg.num_of_calls {
             bananaq::stop(&state.bananaq).unwrap()
         }
     }

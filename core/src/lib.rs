@@ -1,5 +1,7 @@
 #![feature(thread_id_value, backtrace, backtrace_frames)]
 
+extern crate log;
+
 #[macro_use]
 extern crate serde_derive;
 

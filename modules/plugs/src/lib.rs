@@ -1,4 +1,7 @@
 #[macro_use]
+extern crate log;
+
+#[macro_use]
 extern crate serde_derive;
 
 extern crate toml;
@@ -47,7 +50,7 @@ pub struct ConfigCore {
     limiter: Option<LimiterConfig>,
     debug: Option<DebugConfig>,
     mediator: Option<MediatorConfig>,
-    pub bfl: Option<BananizedFuzzyLoopConfig>,//lets share only what we know we need
+    pub bfl: Option<BananizedFuzzyLoopConfig>, //lets share only what we know we need
     smb: Option<()>,
 }
 #[derive(Debug, Deserialize, Serialize)]
@@ -90,7 +93,7 @@ impl Observer {
         &mut self.obs.1
     }
     pub fn stats(&self) {
-        println!(
+        debug!(
             "pluging {} => state={}, call={}",
             self.name,
             self.obs.0.is_some(),
@@ -106,8 +109,7 @@ pub struct Plugins {
 }
 
 impl Plugins {
-    pub fn new(cfg: Config) -> Plugins
-    {
+    pub fn new(cfg: Config) -> Plugins {
         Plugins {
             observers: cfg
                 .online
@@ -126,8 +128,7 @@ impl Plugins {
     ///     - aka i can use 3 years old fuzzer with latest new module
     ///     - though if it really brings some benefits, loosing sources to fuzzer and use it later
     ///     is problem in its own sense
-    fn load_observer(module: &String, cfg: &ConfigCore) -> Observer
-    {
+    fn load_observer(module: &String, cfg: &ConfigCore) -> Observer {
         match module.as_str() {
             "libraceunlock" => Observer {
                 name: module.clone(),
@@ -173,11 +174,9 @@ impl Plugins {
     }
 }
 
-pub fn plug() -> Result<Plugins, io::Error>
-{
+pub fn plug() -> Result<Plugins, io::Error> {
     match load_cfg() {
         Ok(cfg) => Ok(Plugins::new(cfg)),
         Err(e) => return Err(e),
     }
 }
-

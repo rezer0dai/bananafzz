@@ -1,4 +1,5 @@
 use std::{collections::HashMap, rc::Rc, sync::RwLock, thread};
+use log::{debug, info, warn};
 
 extern crate rand;
 use rand::{seq::SliceRandom, Rng};
@@ -147,6 +148,7 @@ impl FuzzyQ {
 
         // forcing at least 1 object of its kind in queue is not necessary what we want, limit config expresivness
         if self.states.len() > self.cfg.max_queue_size {
+debug!("QUEUE is FULL, denying entry of {:?}", fuzzy_info.id);
             return false; //0 != same_kind
         }
 
@@ -158,6 +160,7 @@ impl FuzzyQ {
 
         // well rust, overflows are handled, kind of overkill geting here overlow checks - implmenting fuzzer not OS
         if same_kind * self.cfg.ratio > self.cfg.max_queue_size * 1 {
+warn!("QUEUE is overpopulated of same kind, denying entry of {:?}", fuzzy_info.id);
             return false;
         }
 
@@ -172,6 +175,9 @@ impl FuzzyQ {
         true
     }
     pub fn pop_safe(&mut self) {
+        if !self.active() {
+            return;
+        }
         if !self.states.contains_key(&thread::current().id()) {
             panic!("trying to pop from same thread twice++ or from different thread at all");
         }

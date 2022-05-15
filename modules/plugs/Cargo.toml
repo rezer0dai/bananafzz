@@ -4,6 +4,8 @@ version = "0.1.1"
 authors = ["re:Zer0dAI <tutti@frutti.com>"]
 
 [dependencies]
+log = { version = "*", features = ["std"] }
+env_logger = "*"
 toml = "0.5.8"
 serde = "1.0.131"
 serde_derive = "1.0.131"

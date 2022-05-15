@@ -1,3 +1,6 @@
+extern crate log;
+use self::log::{info, debug};
+
 use super::bananaq::{self, FuzzyQ};
 use state::state::IFuzzyObj;
 
@@ -19,7 +22,7 @@ pub struct FuzzyState {
 impl Drop for FuzzyState {
     fn drop(&mut self) {
         if let Err(e) = bananaq::dtor(&self.banana) {
-            println!(
+            debug!(
                 "[fuzzing] delayloaded drop of {} for bananaq#{:X} <{e}>",
                 self.istate.state().info().name,
                 self.qid
@@ -41,17 +44,21 @@ impl FuzzyState {
         Ok(thread::spawn(move || {
             let banana = istate.state().info().bananaq();
 
-            println!("--> ENTERING {:?}", istate.state().info().name);
             if !bananaq::push(&banana, &istate)? {
-                println!("--> BAILOUT {:?}", istate.state().info().name);
                 return Err(format!(
                     "[bananaq] failed to push {}",
                     istate.state().info().name
                 ));
             }
-            let racer = 0 != istate.state().level();
 
-            println!("--> GO FUZZ {:?}", istate.state().info().name);
+            let racer = 0 != istate.state().level();
+            if !racer {
+                thread::sleep(time::Duration::from_millis(
+                    rand::thread_rng()
+                        .gen_range(0..=bananaq::config(&banana)?.push_sleep),
+                ));
+            }
+
             let mut fuzzy_state = FuzzyState::new(
                 banana
                     .upgrade()
@@ -74,7 +81,6 @@ impl FuzzyState {
                 ));
             }
 
-            println!("--> GO GO GO {:?}", fuzzy_state.istate.state().info().name);
             bananaq::update(&fuzzy_state.istate.state().info())?;
 
             if !racer {
@@ -83,6 +89,8 @@ impl FuzzyState {
                         .gen_range(0..=bananaq::config(&banana)?.after_creation_sleep),
                 ));
             }
+
+            info!("\t>> ALL GOO PROCEED TO FUZZ : {:?}", fuzzy_state.istate.state().info().name);
 
             for i in 0u16.. {
                 //ok we want panic if we overdo it, as 0xFFFF is not reasonable fuzzing for any object ..

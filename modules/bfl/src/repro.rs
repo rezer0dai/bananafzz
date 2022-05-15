@@ -23,8 +23,11 @@ impl PocCall {
         let dmp = data[off..][..info.dmp_size].to_vec();
 
         if dmp.len() != info.dmp_size {
-            panic!("[BFL] malformed PocCall/PocHead structure with dmp size mismatch {:X} vs {:X}",
-                dmp.len(), info.dmp_size);
+            panic!(
+                "[BFL] malformed PocCall/PocHead structure with dmp size mismatch {:X} vs {:X}",
+                dmp.len(),
+                info.dmp_size
+            );
         }
 
         PocCall {
@@ -60,7 +63,7 @@ impl PocCall {
         head.dmp_size = dmp_len;
         head.len = total_size;
 
-//println!("{head:?}");
+        //println!("{head:?}");
 
         call_data
     }

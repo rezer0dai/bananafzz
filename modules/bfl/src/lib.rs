@@ -6,15 +6,12 @@ extern crate rand;
 
 extern crate libc;
 
-use std::{
-    rc::Rc,
-    sync::RwLock,
-};
+use std::{rc::Rc, sync::RwLock};
 
-pub mod shmem;
+mod bfl;
 pub mod poc;
 pub mod repro;
-mod bfl;
+pub mod shmem;
 use bfl::BananizedFuzzyLoop;
 pub mod info;
 pub use info::BananizedFuzzyLoopConfig;
@@ -24,8 +21,8 @@ extern crate generic;
 
 extern crate core;
 
-use core::exec::call::Call;
 use core::banana::observer::{ICallObserver, IStateObserver};
+use core::exec::call::Call;
 use core::state::state::StateInfo;
 
 struct BflProxy {
@@ -33,22 +30,20 @@ struct BflProxy {
 }
 impl BflProxy {
     fn new(lookup: Rc<RwLock<BananizedFuzzyLoop>>) -> BflProxy {
-        BflProxy {
-            lookup: lookup,
-        }
+        BflProxy { lookup: lookup }
     }
 }
 impl ICallObserver for BflProxy {
     fn notify(&self, state: &StateInfo, call: &mut Call) -> bool {
         match self.lookup.write() {
             Ok(mut bfl) => bfl.notify_locked(state, call),
-            Err(_) => panic!("[BFL] lock failed - CALLS")
+            Err(_) => panic!("[BFL] lock failed - CALLS"),
         }
     }
     fn aftermath(&self, state: &StateInfo, call: &mut Call) {
         match self.lookup.write() {
             Ok(mut bfl) => bfl.aftermath_locked(state, call),
-            Err(_) => panic!("[BFL] lock failed - CALLS")
+            Err(_) => panic!("[BFL] lock failed - CALLS"),
         }
     }
 }
@@ -56,7 +51,7 @@ impl IStateObserver for BflProxy {
     fn notify_ctor(&self, state: &StateInfo) -> bool {
         match self.lookup.write() {
             Ok(mut bfl) => bfl.notify_ctor_locked(state),
-            Err(_) => panic!("[BFL] lock failed - CTORS")
+            Err(_) => panic!("[BFL] lock failed - CTORS"),
         }
     }
 }
