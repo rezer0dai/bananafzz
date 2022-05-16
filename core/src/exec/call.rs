@@ -233,8 +233,8 @@ impl Call {
         self.n_attempts
     }
     pub fn attempts(&mut self, n_attempts: usize) -> usize {
-        if n_attempts > self.n_attempts {
-            self.n_attempts = 0
+        if n_attempts < self.n_attempts {
+            self.n_attempts = 1
         }
         self.n_attempts
     }

@@ -184,7 +184,8 @@ impl State {
             { return Ok(()) }
 
             // ok do some proportional way wait
-            thread::sleep(Duration::from_nanos(1 + 100 * self.call_view().n_attempts() as u64));
+            assert!(self.call_view().n_attempts() > 0);
+            thread::sleep(Duration::from_nanos(1 + 100 * (self.call_view().n_attempts() - 1) as u64));
 
             if self.groups[self.ccache.0]
                 .iter()

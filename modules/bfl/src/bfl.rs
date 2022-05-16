@@ -121,7 +121,7 @@ impl BananizedFuzzyLoop {
         let max_n_try = self.cfg.max_allowed_wait_count_per_call as f64 * 0.8;
         let n_try = 1.0 * (n_attempts % self.cfg.max_allowed_wait_count_per_call) as f64;
         if max_n_try > n_try // seems too in-efficient to do ?
-            && self.n_attempts < 200 //50
+            && self.n_attempts < 0x42
             && self.passed < 10
         { // if all good, then we just need to try little more
 trace!("atempts are good, try harder => {:?} /{n_attempts}", self.poc_ind);
@@ -152,7 +152,7 @@ info!("@@@@@@@@@@@@@@@@@@@@@@@@ adding one more to fuzz ({:?} x {:?}) || stats =
         self.fuzzy_cnt = 0;
 warn!("$$$$$$$$$$$$$$$$$$$$$$$$ lets do skip, incomplete, [call : {:X}]({:?} x {:?}) || stats : [{:?}] add_prob:{:?}", poc.info.cid, (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed), add_prob);
 
-        unsafe { INCOMPLETE = true }
+        //unsafe { INCOMPLETE = true }
         return false
     }
     fn notify_locked_repro(&mut self, state: &StateInfo, call: &mut Call) -> bool {
