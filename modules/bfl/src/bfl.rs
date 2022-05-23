@@ -177,7 +177,7 @@ debug!("#sid (object:{:?}; bananaq.len={:?}) stop or forcese  [{:?}/{:?}] -> <{:
 
         if !state.fd.is_invalid() // need to here cuz dupped
             && !self.resolve_fid(&poc.fid, state.fd.data()) {
-error!("fid --> {:?}", (poc.fid, state.fd.data()));
+debug!("fid --> {:?}", (poc.fid, state.fd.data())); // seems common tbh
             return false
         }
 
@@ -231,6 +231,7 @@ error!("STOP2");
         }
         self.level = state.level;
         if state.fd.is_invalid() { // we stop all calls until we observe ctor!!
+trace!("**************** we follow {}", call.name());
             self.ctor_done = false;
         }
         true
@@ -384,7 +385,7 @@ trace!("-------- CTOR : OK SHAAARE");
         true
     }
 
-    pub fn notify_locked(&mut self, state: &StateInfo, call: &mut Call) -> bool {
+    pub fn notify(&mut self, state: &StateInfo, call: &mut Call) -> bool {
         if call.id().is_default() {
             assert!(0 != state.level);
             return true
@@ -405,7 +406,7 @@ error!("STOP5 {:?} / {:?}", (self.poc_ind, self.poc.max_ind()), self.poc.info.ca
             self.notify_locked_fuzzy(state, call)
         }
     }
-    pub fn notify_ctor_locked(&mut self, state: &StateInfo) -> bool {
+    pub fn ctor(&mut self, state: &StateInfo) -> bool {
 trace!("NEW OBJECT!!! {:?} + {:?}", state.id, state.fd.data());
 
         if 0 == state.total {
@@ -419,7 +420,7 @@ trace!("NEW OBJECT!!! {:?} + {:?}", state.id, state.fd.data());
             self.notify_ctor_locked_fuzzy(state)
         }
     }
-    pub fn aftermath_locked(&mut self, state: &StateInfo, call: &mut Call) {
+    pub fn aftermath(&mut self, state: &StateInfo, call: &mut Call) {
         if call.id().is_default() {
             return // defaults, probably doing it up 
         }

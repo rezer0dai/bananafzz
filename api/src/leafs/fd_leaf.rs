@@ -17,7 +17,6 @@ use std::sync::Weak;
 
 use self::core::exec::fd_info::Fd;
 
-use super::bfl_leaf::Bfl;
 use super::const_leaf::Const;
 use super::phantom_leaf::Phantom;
 
@@ -29,31 +28,33 @@ pub struct FdHolder {
     fds: Vec<Box<dyn IArgLeaf>>,
 }
 impl FdHolder {
-    pub fn new(size: usize, fds: Vec<Box<dyn IArgLeaf>>) -> Bfl<FdHolder> {
+    pub fn new(size: usize, fds: Vec<Box<dyn IArgLeaf>>) -> FdHolder {
         if fds.iter().any(|fd| fd.size() > size) {
             panic!("FdHolder::new .. one of fd have bigger size than declared!")
         }
         assert!(fds.iter().all(|fd| fd.size() <= size));
-        Bfl::new(FdHolder {
+        FdHolder {
             size: size,
             fds: fds,
-        })
+        }
     }
-    pub fn dup(fd: &[u8]) -> Bfl<FdHolder> {
+    pub fn dup(fd: &[u8]) -> FdHolder {
         FdHolder::new(fd.len(), vec![Box::new(Const::new(fd))])
     }
-    pub fn holder(size: usize) -> Bfl<FdHolder> {
+    pub fn holder(size: usize) -> FdHolder {
         FdHolder::new(size, vec![Box::new(Phantom::new(size))])
     }
 }
 /// we just copy out whatever was generated, as it is stored in &mem before doing serialization
 impl ISerializableArg for FdHolder {
     fn serialize(&self, mem: &[u8], _: &[u8], _: &[u8]) -> Vec<SerializationInfo> {
+        panic!("is this even thing");
         vec![SerializationInfo {
             offset: 0,
             prefix: String::from("shared_fd(fd_") + &generic::u8_to_str(mem) + ",",
         }]
     }
+    fn dump(&self, _mem: &[u8]) -> Vec<u8> { vec![] }
     fn load(
         &mut self,
         mem: &mut [u8],
@@ -67,6 +68,7 @@ impl ISerializableArg for FdHolder {
             poc_fd,
             mem.len()
         );
+        println!("----> LOADING {}", self.name());
         mem.clone_from_slice(&fd_lookup[poc_fd]);
         0
     }
@@ -100,8 +102,8 @@ pub struct RndFd {
 }
 
 impl RndFd {
-    pub fn new(id: StateTableId, size: usize) -> Bfl<RndFd> {
-        Bfl::new(RndFd { id: id, size: size })
+    pub fn new(id: StateTableId, size: usize) -> FdHolder {
+        FdHolder::new(size, vec![Box::new(RndFd { id: id, size: size })])
     }
 }
 

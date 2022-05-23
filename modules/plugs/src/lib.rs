@@ -34,7 +34,6 @@ extern crate libdebug;
 use libdebug::DebugConfig;
 
 extern crate libmediator;
-use libmediator::MediatorConfig;
 
 extern crate libbfl;
 use libbfl::BananizedFuzzyLoopConfig;
@@ -49,7 +48,7 @@ pub struct ConfigCore {
     sleeper: Option<SleeperConfig>,
     limiter: Option<LimiterConfig>,
     debug: Option<DebugConfig>,
-    mediator: Option<MediatorConfig>,
+    mediator: Option<()>,
     pub bfl: Option<BananizedFuzzyLoopConfig>, //lets share only what we know we need
     smb: Option<()>,
 }
@@ -156,7 +155,7 @@ impl Plugins {
             },
             "libmediator" => Observer {
                 name: module.clone(),
-                obs: libmediator::observers(&cfg.mediator),
+                obs: libmediator::observers(),
             },
             "libbfl" => Observer {
                 name: module.clone(),

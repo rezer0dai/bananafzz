@@ -1,4 +1,5 @@
 use std::sync::Weak;
+use std::collections::HashMap;
 
 extern crate core;
 use self::core::banana::bananaq::FuzzyQ;
@@ -36,12 +37,9 @@ impl ISerializableArg for DeRef {
         vec![SerializationInfo {
             offset: 0,
             prefix: String::from("state_fd(fd_")
-                + &generic::u8_to_str(fd)
-                + ", "
-                + &self.offset.to_string()
-                + ","
-                + &self.size().to_string()
-                + ",",
+                + &generic::u8_to_str(fd) + ", "
+                + &self.offset.to_string() + ","
+                + &self.size().to_string() + ",",
         }]
     }
 }

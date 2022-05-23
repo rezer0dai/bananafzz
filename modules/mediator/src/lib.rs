@@ -1,6 +1,7 @@
-#![feature(integer_atomics)]
+#![feature(map_first_last)]
 
-#[macro_use]
+use std::{rc::Rc, sync::RwLock, collections::BTreeMap};
+
 extern crate serde_derive;
 extern crate serde;
 
@@ -15,39 +16,54 @@ use core::state::state::StateInfo;
 
 extern crate common;
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-pub struct MediatorConfig {
-    mediate_ctor_weight: u8,
-}
 struct Mediator {
-    cfg: MediatorConfig,
+    stats: BTreeMap<u64, usize>
 }
-
-impl ICallObserver for Mediator {
-    fn notify(&self, state: &StateInfo, _call: &mut Call) -> bool {
-        if !state.fd.is_invalid() {
-            return true;
-        }
-        // this is due bad fuzzer implementation and no good config reflecting that
-        //   ctors overhlming fuzzing, and core logic is ommited
-        0 == rand::thread_rng().gen::<u8>() % self.cfg.mediate_ctor_weight
-    }
-}
-
 impl Mediator {
-    pub(crate) fn new(cfg: &MediatorConfig) -> Mediator {
-        Mediator { cfg: *cfg }
+    fn new() -> Self {
+        Self {
+            stats: BTreeMap::new(),
+        }
+    }
+    fn notify(&mut self, state: &StateInfo, call: &mut Call) -> bool {
+        self.notify_impl(state, call).unwrap_or(true)
+    }
+
+    fn notify_impl(&mut self, state: &StateInfo, call: &mut Call) -> Result<bool, ()> {
+        let cur = self.stats.get_key_value(&u64::from(state.id)).ok_or(())?.1;
+        let min = self.stats.first_key_value().ok_or(())?.1;
+        if cur == min {
+            return Ok(true)
+        }
+        // objects hard to fuzz we want to push little more
+        let prob = f64::max(0.1, 1.0 / (cur - min) as f64);
+        Ok(rand::thread_rng().gen_bool(prob))
+    }
+    fn aftermath(&mut self, state: &StateInfo, call: &mut Call) -> bool {
+        if !call.ok() {
+            return false
+        }
+        self.ctor(state)
+    }
+    fn ctor(&mut self, state: &StateInfo) -> bool {
+        let sid = u64::from(state.id);
+        if !self.stats.contains_key(&sid) {
+            self.stats.insert(sid, 0);
+        }
+        *self.stats.get_mut(&sid).unwrap() += 1;
+        true
     }
 }
 
-pub fn observers(
-    cfg: &Option<MediatorConfig>,
-) -> (
+common::callback_proxy!(Mediator);
+
+pub fn observers() -> (
     Option<Box<dyn IStateObserver>>,
     Option<Box<dyn ICallObserver>>,
 ) {
-    match *cfg {
-        Some(ref cfg) => (None, Some(Box::new(Mediator::new(&cfg)))),
-        _ => (None, None),
-    }
+    let lookup = Rc::new(RwLock::new(Mediator::new()));
+    (
+        Some(Box::new(Proxy::new(Rc::clone(&lookup)))),
+        Some(Box::new(Proxy::new(Rc::clone(&lookup)))),
+    )
 }
