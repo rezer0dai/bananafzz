@@ -71,7 +71,7 @@ impl ISerializableArg for FdHolder {
         if fd_lookup.contains_key(poc_fd) { // we may broke repro but inserting calls
             mem.clone_from_slice(&fd_lookup[poc_fd]);
         }
-        mem.len()
+        0 // no any of dump memory was used
     }
 }
 impl IArgLeaf for FdHolder {
