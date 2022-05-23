@@ -68,9 +68,10 @@ impl ISerializableArg for FdHolder {
             poc_fd,
             mem.len()
         );
-        println!("----> LOADING {}", self.name());
-        mem.clone_from_slice(&fd_lookup[poc_fd]);
-        0
+        if fd_lookup.contains_key(poc_fd) { // we may broke repro but inserting calls
+            mem.clone_from_slice(&fd_lookup[poc_fd]);
+        }
+        mem.len()
     }
 }
 impl IArgLeaf for FdHolder {
