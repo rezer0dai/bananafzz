@@ -29,7 +29,7 @@ impl Mediator {
         self.notify_impl(state, call).unwrap_or(true)
     }
 
-    fn notify_impl(&mut self, state: &StateInfo, call: &mut Call) -> Result<bool, ()> {
+    fn notify_impl(&mut self, state: &StateInfo, _call: &mut Call) -> Result<bool, ()> {
         let cur = self.stats.get_key_value(&u64::from(state.id)).ok_or(())?.1;
         let min = self.stats.first_key_value().ok_or(())?.1;
         if cur == min {

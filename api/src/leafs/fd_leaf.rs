@@ -60,9 +60,9 @@ impl ISerializableArg for FdHolder {
         &mut self,
         mem: &mut [u8],
         _dump: &[u8],
-        poc_fd: &[u8],
+        _poc_fd: &[u8],
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
-    ) -> usize {
+    ) -> Result<usize, String> {
         // bfl specific
         let mut fd = self.sid.to_le_bytes().to_vec();
         fd.extend_from_slice(&[0x42u8; 4+2]);
@@ -72,9 +72,9 @@ impl ISerializableArg for FdHolder {
             mem.clone_from_slice(&fd[fd.len() - mem.len()..])
         } // as we may try constant FD at fuzzing, not yet added to queue ?
         else { // should be empty or invalid FD !! 
-            println!("--> FD {fd:?} NOT FOUND at table\n{fd_lookup:?}")
+            return Err(format!("--> FD {fd:?} NOT FOUND at table\n{fd_lookup:?}"))
         } // keep for now debug print, later we will kick it off once we debuged it enough :)
-        0 // no any of dump memory was used
+        Ok(0) // no any of dump memory was used
     }
 }
 impl IArgLeaf for FdHolder {

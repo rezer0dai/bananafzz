@@ -93,6 +93,8 @@ impl StateInfo {
 pub struct State {
     /// sharable informations with FuzzyQueue (rnd fd arg, de-dups, ..) && with modules
     info: StateInfo,
+    /// if call constantly fails to pass trough plugins
+    failing_delay_limit: u64,
     /// hardcoded limit per object how many iteration of fuzzing to perform on it - then close
     limit: usize,
     dead_ratio: f64,
@@ -186,7 +188,7 @@ impl State {
             // ok do some proportional way wait
             assert!(self.call_view().n_attempts() > 0);
             if self.level() > 0 && 1 != self.groups[self.ccache.0].len() {
-                thread::sleep(Duration::from_nanos(1 + 100 * ((self.call_view().n_attempts() - 1) as u64) % 10));
+                thread::sleep(Duration::from_nanos(1 + 100 * ((self.call_view().n_attempts() - 1) as u64) % self.failing_delay_limit));
             } else { // otherwise just for task switch
                 thread::sleep(Duration::from_nanos(1));
             }
@@ -355,6 +357,7 @@ impl State {
                 level : 0,
                 finished : false,
             },
+            failing_delay_limit : fzzconfig.failing_delay_limit,
             dead_ratio : fzzconfig.dead_call,
             limit : min(fzzconfig.new_limit, limit),
             slopes : slopes,
@@ -406,6 +409,7 @@ impl State {
                 level : level,
                 finished : false,
             },
+            failing_delay_limit : fzzconfig.failing_delay_limit,
             dead_ratio : fzzconfig.dead_call,
             limit : min(fzzconfig.dup_limit, limit),
             slopes : slopes,

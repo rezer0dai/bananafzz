@@ -34,7 +34,7 @@ impl<F> ISerializableArg for StateLink<F> {
         dump: &[u8],
         poc_fd: &[u8],
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
-    ) -> usize {
+    ) -> Result<usize, String> {
         self.arg.load(mem, dump, poc_fd, fd_lookup)
     }
 }

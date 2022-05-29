@@ -17,14 +17,12 @@ pub struct FuzzyConfig {
     pub dup_limit: usize,
 
 // fuzzer specifics
-    #[allow(unused)]
     pub active_time: u64,
-    #[allow(unused)]
     pub push_sleep: u64,
-    #[allow(unused)]
     pub after_creation_sleep: u64,
+    pub failing_delay_limit: u64,
+    pub generate_failing_delay: usize,
 
-    #[allow(unused)]
     pub push_count: u64,
 
     #[allow(unused)]
@@ -46,4 +44,3 @@ impl FuzzyConfig {
         }
     }
 }
-

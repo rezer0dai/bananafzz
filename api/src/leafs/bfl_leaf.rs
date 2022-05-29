@@ -28,7 +28,7 @@ impl<T> ISerializableArg for Bfl<T>
         self.leaf.serialize(mem, fd, shared)
     }
     fn dump(&self, _mem: &[u8]) -> Vec<u8> { vec![] }
-    fn load(&mut self, _mem: &mut[u8], _dump: &[u8], _data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize { 0 }
+    fn load(&mut self, _mem: &mut[u8], _dump: &[u8], _data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> Result<usize, String> { Ok(0) }
 }
 
 impl<T> IArgLeaf for Bfl<T>

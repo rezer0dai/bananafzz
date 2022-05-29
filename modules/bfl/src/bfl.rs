@@ -224,22 +224,17 @@ debug!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).un
             return self.stop_or_force(call_attempts!(call, state, self.n_attempts), 1.0)//try add something
         }
 
-        if self.ctor_done { // OK, AFL did good job if ctor
-/****************************/
-/* DOING REPRO on this call */
-/****************************/
+        if let Err(msg) = call.load_args(&poc.dmp, &poc.mem, &self.fid_lookup) {
+info!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name());
+            return false
+        }
+
 trace!("---> [fid : {:?}] : loading ARG : {:?} and {:?}", poc.fid, poc.dmp.len(), poc.mem.len());
-            call.load_args(&poc.dmp, &poc.mem, &self.fid_lookup);
-        } else {//AFL screwed ctor, we want to abandon fuzzing
+
+        if !self.ctor_done { // OK, AFL did good job if ctor
 error!("STOP2 -> failing ctor for : {} ( seems load args problem )", self.ctor_name);
             bananaq::stop(&state.bananaq).unwrap();
-            return false
-            // another option, is let it bananafuzzer fix it
-            // do few more iterations until ctor is OK
-            // but then it will meddle with AFL and its statistics
-            // mainly it will connect new code cov with screwed ctor
-            // not with fixed ctor, which will addup until 
-            // pairing code cov - poc will be out of sync too much
+            return false // actually this should be an ASSERTQ!
         }
         self.level = state.level;
         if state.fd.is_invalid() { // we stop all calls until we observe ctor!!

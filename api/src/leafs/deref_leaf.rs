@@ -1,5 +1,4 @@
 use std::sync::Weak;
-use std::collections::HashMap;
 
 extern crate core;
 use self::core::banana::bananaq::FuzzyQ;

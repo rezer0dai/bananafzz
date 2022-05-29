@@ -39,7 +39,8 @@ impl ISerializableArg for Ptr {
     fn dump(&self, _mem: &[u8]) -> Vec<u8> {
         self.arg.dump()
     }
-    fn load(&mut self, _mem: &mut[u8], dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
+        
+    fn load(&mut self, _mem: &mut[u8], dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> Result<usize, String> {
         self.arg.load(dump, data, fd_lookup)
     }
 }

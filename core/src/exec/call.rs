@@ -106,9 +106,13 @@ impl Call {
     pub fn do_call(&mut self, bananaq: &Weak<FuzzyQ>, fd: &[u8], shared: &mut[u8]) -> bool {
         self.n_attempts += 1;
 
+        let generate_failing_delay = if let Ok(config) = bananaq::config(&bananaq) {
+            config.generate_failing_delay
+        } else { return false };
+
         self.total += 1;
         for arg in self.args.iter_mut() {
-            if 1 != self.n_attempts % 10 { // 10 needs to be in config!!
+            if 1 != self.n_attempts % generate_failing_delay { 
                 break; // observer may delay us cuz wait, but some time refresh 
             }
             arg.do_generate(bananaq, fd, shared);
@@ -145,15 +149,16 @@ impl Call {
             .collect::<Vec<u8>>()
     }
 
-    pub fn load_args(&mut self, dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>, Vec<u8>>) {
+    pub fn load_args<'a>(&mut self, dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> Result<(), String> {
         let mut off = 0;
         let mut off_mem = 0;
         for arg in self.args.iter_mut() {
             let asize = arg.data().len();
-            let size = arg.load(&dump[off..], &data[off_mem..][..asize], fd_lookup);
+            let size = arg.load(&dump[off..], &data[off_mem..][..asize], fd_lookup)?;
             off += size;
             off_mem += asize;
         }
+        Ok(())
     }
 
     /// 1. notify observers and ask for aproval

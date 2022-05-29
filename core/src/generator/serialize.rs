@@ -62,7 +62,7 @@ pub trait ISerializableArg {
         mem.copy_from_slice(&dump[size_size..][..data.len()]);
         mem.len() + size_size
     }
-    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> usize {
-        self.default_load(mem, dump, data)
+    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> Result<usize, String> {
+        Ok(self.default_load(mem, dump, data))
     }
 }

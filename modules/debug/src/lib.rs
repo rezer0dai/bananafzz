@@ -22,8 +22,7 @@ struct Debug {
     cfg: DebugConfig,
 }
 
-use std::collections::HashMap;
-
+//use std::collections::HashMap;
 
 impl ICallObserver for Debug {
     fn notify(&self, state: &StateInfo, call: &mut Call) -> bool {

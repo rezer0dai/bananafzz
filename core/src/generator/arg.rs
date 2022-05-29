@@ -138,7 +138,7 @@ impl Arg {
         dump: &[u8],
         data: &[u8],
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
-    ) -> usize {
+    ) -> Result<usize, String> {
         self.generator
             .load(self.data.data_mut(), dump, data, fd_lookup)
     }
