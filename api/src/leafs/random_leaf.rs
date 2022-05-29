@@ -34,7 +34,7 @@ impl IArgLeaf for RndData {
 
     fn name(&self) -> &'static str { "RndData" }
 
-    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &mut[u8]) {
         assert!(mem.len() == self.size);//check in debug is OK
         rand::thread_rng().fill(mem);
     }

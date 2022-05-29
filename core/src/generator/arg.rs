@@ -122,7 +122,7 @@ impl Arg {
     ///
     /// - for primitive type it will do just one generation
     /// - for complex types ( memory arguments mainly ) will generate trough composite which will walk trough its leafs
-    pub fn do_generate(&mut self, bananaq: &Weak<FuzzyQ>, fd: &[u8], shared: &[u8]) -> &mut Self {
+    pub fn do_generate(&mut self, bananaq: &Weak<FuzzyQ>, fd: &[u8], shared: &mut [u8]) -> &mut Self {
         self.generator
             .generate(bananaq, self.data.data_mut(), fd, shared);
         self

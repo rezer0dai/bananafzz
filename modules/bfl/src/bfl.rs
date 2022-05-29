@@ -45,6 +45,7 @@ pub struct BananizedFuzzyLoop {
     poc_ind: usize,
 
     ctor_done: bool,
+    ctor_name: String,
     call_data: Vec<u8>,
 
     ctors_cnt: usize,
@@ -75,6 +76,7 @@ impl BananizedFuzzyLoop {
             poc_ind : 0,
 
             ctor_done : true,
+            ctor_name : String::from(""),
             call_data : vec![],
 
             ctors_cnt: 0,
@@ -101,16 +103,26 @@ impl BananizedFuzzyLoop {
         self.uid_lookup.insert(uid_a, uid_b);
         true
     }
-    fn resolve_fid(&mut self, fid_a: &[u8], fid_b: &[u8]) -> bool {
-        assert!(!fid_a.iter().all(|b| 0 == *b));
-        if self.fid_lookup.contains_key(fid_a) {
-            return fid_b.eq(&self.fid_lookup[fid_a])
+    fn resolve_fid(&mut self, sid: u64, fid_a: &[u8], fid_b: &[u8]) -> bool {
+        let mut sid_fid_a = sid.to_le_bytes().to_vec();
+        sid_fid_a.extend_from_slice(&[0x42u8; 6]);
+        sid_fid_a.extend_from_slice(fid_a);
+        let sid_fid_a = sid_fid_a;
+
+        let mut sid_fid_b = sid.to_le_bytes().to_vec();
+        sid_fid_b.extend_from_slice(&[66u8; 4+2]);
+        sid_fid_b.extend_from_slice(fid_b);
+        let sid_fid_b = sid_fid_b;
+
+        assert!(!sid_fid_a.iter().all(|b| 0 == *b));
+        if self.fid_lookup.contains_key(&sid_fid_a) {
+            return sid_fid_b.eq(&self.fid_lookup[&sid_fid_a])
         }
-        if self.fid_once.contains(fid_b) {
+        if self.fid_once.contains(&sid_fid_b) {
             return false
         }
-        self.fid_once.insert(fid_b.to_vec());
-        self.fid_lookup.insert(fid_a.to_vec(), fid_b.to_vec());
+        self.fid_once.insert(sid_fid_b.clone());
+        self.fid_lookup.insert(sid_fid_a, sid_fid_b);
         true
     }
     fn stop_or_force(&mut self, n_attempts: usize, add_prob: f64) -> bool {
@@ -176,7 +188,7 @@ debug!("#sid (object:{:?}; bananaq.len={:?}) stop or forcese  [{:?}/{:?}] -> <{:
         }
 
         if !state.fd.is_invalid() // need to here cuz dupped
-            && !self.resolve_fid(&poc.fid, state.fd.data()) {
+            && !self.resolve_fid(poc.info.sid, &poc.fid, state.fd.data()) {
 debug!("fid --> {:?}", (poc.fid, state.fd.data())); // seems common tbh
             return false
         }
@@ -219,7 +231,7 @@ debug!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).un
 trace!("---> [fid : {:?}] : loading ARG : {:?} and {:?}", poc.fid, poc.dmp.len(), poc.mem.len());
             call.load_args(&poc.dmp, &poc.mem, &self.fid_lookup);
         } else {//AFL screwed ctor, we want to abandon fuzzing
-error!("STOP2");
+error!("STOP2 -> failing ctor for : {} ( seems load args problem )", self.ctor_name);
             bananaq::stop(&state.bananaq).unwrap();
             return false
             // another option, is let it bananafuzzer fix it
@@ -232,6 +244,7 @@ error!("STOP2");
         self.level = state.level;
         if state.fd.is_invalid() { // we stop all calls until we observe ctor!!
 trace!("**************** we follow {}", call.name());
+            self.ctor_name = format!("{} :: {}", state.name, call.name()).to_string();
             self.ctor_done = false;
         }
         true
@@ -253,7 +266,7 @@ trace!("APPROVED");
     }
     fn verify_ctor(&mut self, state: &StateInfo) -> bool {
         let poc = PocCall::new(&self.poc.load(self.poc_ind));
-        if self.resolve_fid(&poc.fid, state.fd.data()) {
+        if self.resolve_fid(poc.info.sid, &poc.fid, state.fd.data()) {
             return true
         }
         

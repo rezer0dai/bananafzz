@@ -64,7 +64,7 @@ impl<T: Copy + BitAnd + BitOr> IArgLeaf for Flag<T>
     /// we do 6:1 generation based on defiition
     ///
     /// and 1:6 we provide random numero
-    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &mut[u8]) {
         if self.afl_fix_ratio < 0.0 {
             self.afl_fix_ratio = bananaq::config(bananaq).unwrap().afl_fix_ratio;
         }

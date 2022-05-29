@@ -25,5 +25,5 @@ impl IArgLeaf for Phantom {
 
     fn name(&self) -> &'static str { "Phantom" }
 
-    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, _: &mut[u8], _: &[u8], _: &[u8]) { }
+    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, _: &mut[u8], _: &[u8], _: &mut[u8]) { }
 }

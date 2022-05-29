@@ -103,12 +103,12 @@ impl Call {
     /// 3. (do_call_impl)invoke callbacks to all modules -> forward this job to Banana Internal Manager in fact ..
     /// 4. (do_call_impl)invoke function responsible to invoke targeted call
     /// 5. store results
-    pub fn do_call(&mut self, bananaq: &Weak<FuzzyQ>, fd: &[u8], shared: &mut [u8]) -> bool {
+    pub fn do_call(&mut self, bananaq: &Weak<FuzzyQ>, fd: &[u8], shared: &mut[u8]) -> bool {
         self.n_attempts += 1;
 
         self.total += 1;
         for arg in self.args.iter_mut() {
-            if 1 != self.n_attempts % 10 {
+            if 1 != self.n_attempts % 10 { // 10 needs to be in config!!
                 break; // observer may delay us cuz wait, but some time refresh 
             }
             arg.do_generate(bananaq, fd, shared);

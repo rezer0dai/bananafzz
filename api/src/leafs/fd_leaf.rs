@@ -26,9 +26,10 @@ use super::phantom_leaf::Phantom;
 pub struct FdHolder {
     size: usize,
     fds: Vec<Box<dyn IArgLeaf>>,
+    sid: u64,
 }
 impl FdHolder {
-    pub fn new(size: usize, fds: Vec<Box<dyn IArgLeaf>>) -> FdHolder {
+    pub fn new(size: usize, sid: u64, fds: Vec<Box<dyn IArgLeaf>>) -> FdHolder {
         if fds.iter().any(|fd| fd.size() > size) {
             panic!("FdHolder::new .. one of fd have bigger size than declared!")
         }
@@ -36,19 +37,19 @@ impl FdHolder {
         FdHolder {
             size: size,
             fds: fds,
+            sid: sid,
         }
     }
-    pub fn dup(fd: &[u8]) -> FdHolder {
-        FdHolder::new(fd.len(), vec![Box::new(Const::new(fd))])
+    pub fn dup(sid: u64, fd: &[u8]) -> FdHolder {
+        FdHolder::new(fd.len(), sid, vec![Box::new(Const::new(fd))])
     }
-    pub fn holder(size: usize) -> FdHolder {
-        FdHolder::new(size, vec![Box::new(Phantom::new(size))])
+    pub fn holder(sid: u64, size: usize) -> FdHolder {
+        FdHolder::new(size, sid, vec![Box::new(Phantom::new(size))])
     }
 }
 /// we just copy out whatever was generated, as it is stored in &mem before doing serialization
 impl ISerializableArg for FdHolder {
     fn serialize(&self, mem: &[u8], _: &[u8], _: &[u8]) -> Vec<SerializationInfo> {
-        panic!("is this even thing");
         vec![SerializationInfo {
             offset: 0,
             prefix: String::from("shared_fd(fd_") + &generic::u8_to_str(mem) + ",",
@@ -62,15 +63,17 @@ impl ISerializableArg for FdHolder {
         poc_fd: &[u8],
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
     ) -> usize {
-        assert!(
-            poc_fd.len() == mem.len(),
-            "[BFL] we got strange poc_fd {:?} should be of size {}",
-            poc_fd,
-            mem.len()
-        );
-        if fd_lookup.contains_key(poc_fd) { // we may broke repro but inserting calls
-            mem.clone_from_slice(&fd_lookup[poc_fd]);
-        }
+        // bfl specific
+        let mut fd = self.sid.to_le_bytes().to_vec();
+        fd.extend_from_slice(&[0x42u8; 4+2]);
+        fd.extend_from_slice(mem);
+        
+        if let Some(fd) = fd_lookup.get(&fd) {
+            mem.clone_from_slice(&fd[fd.len() - mem.len()..])
+        } // as we may try constant FD at fuzzing, not yet added to queue ?
+        else { // should be empty or invalid FD !! 
+            println!("--> FD {fd:?} NOT FOUND at table\n{fd_lookup:?}")
+        } // keep for now debug print, later we will kick it off once we debuged it enough :)
         0 // no any of dump memory was used
     }
 }
@@ -88,7 +91,7 @@ impl IArgLeaf for FdHolder {
         bananaq: &Weak<FuzzyQ>,
         mem: &mut [u8],
         fd: &[u8],
-        shared: &[u8],
+        shared: &mut[u8],
     ) {
         self.fds
             .choose_mut(&mut rand::thread_rng())
@@ -98,13 +101,13 @@ impl IArgLeaf for FdHolder {
 }
 
 pub struct RndFd {
-    id: StateTableId,
+    sid: StateTableId,
     size: usize,
 }
 
 impl RndFd {
-    pub fn new(id: StateTableId, size: usize) -> FdHolder {
-        FdHolder::new(size, vec![Box::new(RndFd { id: id, size: size })])
+    pub fn new(sid: StateTableId, size: usize) -> FdHolder {
+        FdHolder::new(size, sid.into(), vec![Box::new(RndFd { sid: sid, size: size })])
     }
 }
 
@@ -120,7 +123,7 @@ impl IArgLeaf for RndFd {
     /// 4:6 we share valid object / state
     ///
     /// other time we provide NULL or invalid one
-    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], _: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], _: &[u8], _: &mut[u8]) {
         // for soly we skip dummy & invalid
         match rand::thread_rng().gen_range(2u8..=7) {
             0 => mem.clone_from_slice(&Fd::dummy(self.size()).data()),
@@ -128,7 +131,7 @@ impl IArgLeaf for RndFd {
             _ => {
                 mem.clone_from_slice(&Fd::dummy(self.size()).data());
 
-                let fd = match bananaq::get_rnd_fd(bananaq, self.id.clone(), self.size) {
+                let fd = match bananaq::get_rnd_fd(bananaq, self.sid.clone(), self.size) {
                     Ok(fd) => fd,
                     Err(_) => return,
                 };
@@ -137,7 +140,7 @@ impl IArgLeaf for RndFd {
                 }
                 if fd.data().len() != mem.len() {
                     //unsafe { asm!("int3") }
-                    panic!("Random argument selection failed on size mismatch of : {:?} where : {} vs {}", self.id, fd.data().len(), mem.len())
+                    panic!("Random argument selection failed on size mismatch of : {:?} where : {} vs {}", self.sid, fd.data().len(), mem.len())
                 }
                 //mem[..fd.len()].clone_from_slice(&fd);
                 mem.clone_from_slice(fd.data());

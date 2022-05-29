@@ -53,7 +53,7 @@ impl IArgLeaf for DeRef {
         "Fd"
     }
 
-    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut [u8], fd: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut [u8], fd: &[u8], _: &mut[u8]) {
         mem.copy_from_slice(&fd[self.offset..self.offset + self.size]);
     }
 }

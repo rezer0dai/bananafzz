@@ -49,7 +49,7 @@ impl IArgLeaf for Const {
 
     fn name(&self) -> &'static str { "Const" }
 
-    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &mut[u8]) {
         mem.clone_from_slice(&self.data);
         /*
           .clone()

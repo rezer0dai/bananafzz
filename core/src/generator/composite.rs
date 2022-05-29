@@ -124,7 +124,7 @@ impl IArgLeaf for ArgComposite {
     fn name(&self) -> &'static str { self.name }
 
     //better if this will be private ( different trait dont used in queue )
-    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &[u8]) {
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]) {
         // for &(off, ref mut arg) in self.args.iter() {
         //     let size = arg.size();
         //     arg.generate(&mut mem[off..off+size])
@@ -222,4 +222,3 @@ impl ISerializableArg for ArgComposite {
         off_d
     }
 }
-

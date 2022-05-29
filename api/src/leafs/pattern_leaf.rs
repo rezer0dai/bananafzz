@@ -29,7 +29,7 @@ impl IArgLeaf for Pattern {
 
     fn name(&self) -> &'static str { "Pattern" }
 
-    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &mut[u8]) {
       mem.fill(self.pattern)
     }
 }

@@ -39,14 +39,50 @@ impl IArgLeaf for Shared {
         "Shared"
     }
     //reading shared state
-    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut [u8], _: &[u8], shared: &[u8]) {
+    fn generate_unsafe(&mut self, _: &Weak<FuzzyQ>, mem: &mut [u8], _: &[u8], shared: &mut[u8]) {
         mem.clone_from_slice(&shared[self.offset..][..self.size]);
-    } // in case that our call should modify this and other use it, then is best
-      // to do it trough proxy at target, aka dllexport, and this as additional argument
-      // like open(..) has 2 arguments, then export open_(a1, a2, a3) { open(a1, a2); memcpy(a3, a2) }
-      // could do also special argument f.e. SharedWriter, but above seems more clean
-      //saving shared state
+    }
     fn save_shared(&mut self, mem: &[u8], shared: &mut [u8]) {
         shared[self.offset..][..self.size].clone_from_slice(mem);
+    }
+}
+
+pub struct SharedWrite {
+    arg: Box<dyn IArgLeaf>,
+    offset: usize,
+}
+
+impl SharedWrite {
+    pub fn new(arg: Box<dyn IArgLeaf>) -> Bfl<SharedWrite> {
+        Bfl::new(SharedWrite {
+            arg: arg,
+            offset: 0,
+        })
+    }
+    pub fn partial(offset: usize, arg: Box<dyn IArgLeaf>) -> Bfl<SharedWrite> {
+        Bfl::new(SharedWrite {
+            arg: arg,
+            offset: offset,
+        })
+    }
+}
+
+impl ISerializableArg for SharedWrite { }
+
+impl IArgLeaf for SharedWrite {
+    fn size(&self) -> usize {
+        self.arg.size()
+    }
+
+    fn name(&self) -> &'static str {
+        self.arg.name()
+    }
+    //reading shared state
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], fd: &[u8], shared: &mut[u8]) {
+        self.arg.generate_unsafe(bananaq, mem, fd, shared);
+        self.save_shared(mem, shared);
+    }
+    fn save_shared(&mut self, mem: &[u8], shared: &mut [u8]) {
+        shared[self.offset..][..self.arg.size()].clone_from_slice(mem);
     }
 }

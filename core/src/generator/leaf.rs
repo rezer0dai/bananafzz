@@ -41,10 +41,10 @@ pub trait IArgLeaf : ISerializableArg {
     ///     }
     /// }
     /// ```
-    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &[u8]);
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]);
 
     /// wrapping GenerateImpl per Argument, to check slice length corectness!
-    fn generate(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &[u8]) {
+    fn generate(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]) {
         if mem.len() != self.size() {
             panic!("trying to generate Argument with wrong size {} -> {} vs {}", self.name(), mem.len(), self.size());
         }

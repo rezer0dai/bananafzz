@@ -38,22 +38,7 @@ impl ICallObserver for Debug {
         }
         if self.cfg.only_successfull && !call.ok() {
             return true;//as this is pre-callback call.ok() will get us print second time call is hit after it suceed
-            //also it will never print ctors in only_successfull mode...
-            //debug modle is mostly to print out if all calls are called with frequency as expected
-            //and if they are sucessfull more or less, for better analysis need separate analyze module
         }
-println!("[A] TEMPORARY debug out args {:?} : {:?} [fd:{:?}] ", call.name(), call.dump_args(), state.fd);
-//call.load_args( &call.dump_args().iter().map(|b| b + 1).collect::<Vec<u8>>() );
-//println!("[B] TEMPORARY debug out args {:?} : {:?} [fd:{:?}] ", call.name(), call.dump_args(), state.fd);
-//call.load_args( &call.dump_args().iter().map(|b| b - 1).collect::<Vec<u8>>() );
-
-let fd_lookup = HashMap::new();
-call.load_args( 
-    &call.dump_args().iter().map(|b| *b).collect::<Vec<u8>>(),
-    &call.dump_mem(),
-    &fd_lookup
-    );
-
         println!("[d]call : {:?} <{:?}> [fd:{:?} | {:?}]", call.name(), state.name, state.fd, call.success());
         true
     }

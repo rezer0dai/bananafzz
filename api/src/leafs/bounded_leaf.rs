@@ -15,7 +15,6 @@ use self::core::banana::bananaq::{self, FuzzyQ};
 use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 
-/// arg generator for bounded values - ranges ( 1..22, 0..1, 66..888, ..)
 pub struct Bounded<T> {
     bounds: Vec< RangeInclusive<T> >,
     afl_fix_ratio: f64,
@@ -80,7 +79,7 @@ impl<T: Copy + PartialOrd + SampleUniform + Debug + Add<Output = T> + Sub<Output
 
     fn name(&self) -> &'static str { "Bounded" }
 
-    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &[u8]) {
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &mut[u8]) {
         if self.afl_fix_ratio < 0.0 {
             self.afl_fix_ratio = bananaq::config(bananaq).unwrap().afl_fix_ratio;
         }
@@ -91,3 +90,42 @@ impl<T: Copy + PartialOrd + SampleUniform + Debug + Add<Output = T> + Sub<Output
     }
 
 }
+
+pub struct BoundedOverX<T> {
+    x: u64,
+    bounded: Bounded<T>,
+}
+impl<T> BoundedOverX<T>
+{
+    pub fn one<B>(x: u64, bounds: B) -> Self
+        where B: Into< RangeInclusive<T> >, T: Clone
+    {
+        BoundedOverX { 
+            x: x,
+            bounded : Bounded::one(bounds)
+        }
+    }
+    pub fn ranges<B>(x: u64, bounds: Vec<B>) -> Self
+        where B: Into< RangeInclusive<T> >, T: Clone
+    {
+        BoundedOverX { 
+            x: x,
+            bounded : Bounded::ranges(bounds)
+        }
+    }
+}
+impl<T: Copy + PartialOrd + SampleUniform + Debug + Add<Output = T> + Sub<Output = T> + Rem<Output = T> + From<u64> + Into<u64>> IArgLeaf for BoundedOverX<T>
+{
+    fn size(&self) -> usize { mem::size_of::<T>() }
+
+    fn name(&self) -> &'static str { "BoundedOverX" }
+
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]) {
+        self.bounded.generate_unsafe(bananaq, mem, fd, shared);
+        let x = self.x.pow((*generic::data_const_unsafe::<T>(mem)).into() as u32);
+        *generic::data_mut_unsafe::<T>(mem) = x.into();
+    }
+}
+// bfl should learn fast that it does not make sense to modify
+// or it finds some modifier qute effecgtive ( +-1 )
+impl<T> ISerializableArg for BoundedOverX<T> {}
