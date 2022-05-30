@@ -1,5 +1,5 @@
 use std::{collections::HashMap, rc::Rc, sync::RwLock, thread};
-use log::{debug, info, warn};
+use log::{debug, warn};
 
 extern crate rand;
 use rand::{seq::SliceRandom, Rng};
@@ -140,17 +140,20 @@ impl FuzzyQ {
         if !self.active() {
             return false;
         }
-        let same_kind = self
-            .states
-            .iter()
-            .filter(|&(_, ref state)| (state.id.clone() & fuzzy_info.id.clone()))
-            .count();
-
-        // forcing at least 1 object of its kind in queue is not necessary what we want, limit config expresivness
         if self.states.len() > self.cfg.max_queue_size {
 debug!("QUEUE is FULL, denying entry of {:?}", fuzzy_info.id);
             return false; //0 != same_kind
         }
+        let same_kind = self
+            .states
+            .iter()
+            // filter out unicorns
+            .filter(|&(_, ref state)| !(state.id.clone() & StateTableId::Id(1)))
+            // count just same kind
+            .filter(|&(_, ref state)| (state.id.clone() & fuzzy_info.id.clone()))
+            .count();
+
+        // forcing at least 1 object of its kind in queue is not necessary what we want, limit config expresivness
 
         //here we want to FOLD and check siblings count ( ratio-% per object!! )
         //pay attention that we are interested only in activated ones ?
@@ -159,7 +162,15 @@ debug!("QUEUE is FULL, denying entry of {:?}", fuzzy_info.id);
         //ok seems strict check on all siblings is preferable!!
 
         // well rust, overflows are handled, kind of overkill geting here overlow checks - implmenting fuzzer not OS
-        if same_kind * self.cfg.ratio > self.cfg.max_queue_size * 1 {
+        if StateTableId::Id(1) & fuzzy_info.id.clone() { // unicorn
+            if self.cfg.unicorn_kin_limit < self
+                .states
+                .iter()
+                .filter(|&(_, ref state)| (state.id.clone() & StateTableId::Id(1)))
+                .filter(|&(_, ref state)| (state.id.clone() & fuzzy_info.id.clone()))
+                .count()
+            { return false }
+        } else if same_kind * self.cfg.ratio > self.cfg.max_queue_size * 1 {
 warn!("QUEUE is overpopulated of same kind, denying entry of {:?}", fuzzy_info.id);
             return false;
         }

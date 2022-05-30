@@ -22,7 +22,7 @@ pub use leafs::shared_leaf::SharedWrite;
 
 #[macro_export]
 macro_rules! shared_write {
-    ($iarg:expr) => {
-        api::SharedWrite::new(Box::new($iarg))
+    ($off:expr, $iarg:expr) => {
+        api::SharedWrite::partial($off, Box::new($iarg))
     };
 }

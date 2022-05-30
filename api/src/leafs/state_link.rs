@@ -5,7 +5,7 @@ use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 use self::core::generator::serialize::SerializationInfo;
 
-use self::core::banana::bananaq::{self, FuzzyQ};
+use self::core::banana::bananaq::FuzzyQ;
 use std::sync::Weak;
 
 pub struct StateLink<F> {

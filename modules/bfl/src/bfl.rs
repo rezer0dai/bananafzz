@@ -230,12 +230,13 @@ info!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name())
         }
 
 trace!("---> [fid : {:?}] : loading ARG : {:?} and {:?}", poc.fid, poc.dmp.len(), poc.mem.len());
-
+/*
         if !self.ctor_done { // OK, AFL did good job if ctor
 error!("STOP2 -> failing ctor for : {} ( seems load args problem )", self.ctor_name);
             bananaq::stop(&state.bananaq).unwrap();
             return false // actually this should be an ASSERTQ!
         }
+*/
         self.level = state.level;
         if state.fd.is_invalid() { // we stop all calls until we observe ctor!!
 trace!("**************** we follow {}", call.name());

@@ -104,7 +104,7 @@ pub fn get_rnd_fd(
     id: StateTableId,
     size: usize,
 ) -> Result<Fd, &'static str> {
-    read_prot(banana, |banana| banana.get_rnd_fd(id, size))
+    read_prot(banana, |banana| banana.get_rnd_fd(id.de_horn(), size))
 }
 pub fn is_active(bananaq: &Weak<FuzzyQ>) -> Result<bool, &'static str> {
     read_prot(bananaq, |banana| banana.active())

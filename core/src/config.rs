@@ -9,6 +9,7 @@ pub struct FuzzyConfig {
     pub dead_call: f64,
     pub afl_fix_ratio: f64,
 
+    pub unicorn_kin_limit: usize,
     pub ratio: usize,
     pub max_racers_count: usize,
     pub max_queue_size: usize,

@@ -9,6 +9,17 @@ pub enum StateTableId {
     Id(u64),
 }
 
+impl StateTableId {
+    pub fn de_horn(self) -> Self {
+        match self {
+            StateTableId::Id(id) => 
+                if 1 != id { // pure unicorn ?
+                    StateTableId::Id((id >> 1) << 1) // no == de-horn
+                } else { self } // yes == keep horn
+        }
+    }
+}
+
 impl PartialOrd for StateTableId {
     fn partial_cmp(&self, other: &StateTableId) -> Option<Ordering> {
         Some(self.cmp(other))
