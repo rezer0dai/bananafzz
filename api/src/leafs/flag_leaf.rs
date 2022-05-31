@@ -66,8 +66,8 @@ impl<T: Copy + BitAnd + BitOr> IArgLeaf for Flag<T>
     /// and 1:6 we provide random numero
     fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &mut[u8]) {
         if self.afl_fix_ratio < 0.0 {
-            if Ok(afl_fix_ratio) = bananaq::config(bananaq).unwrap().afl_fix_ratio {
-                self.afl_fix_ratio = afl_fix_ratio
+            if let Ok(config) = bananaq::config(bananaq) {
+                self.afl_fix_ratio = config.afl_fix_ratio
             }
         }
         *generic::data_mut_unsafe::<T>(mem) = T::from(
