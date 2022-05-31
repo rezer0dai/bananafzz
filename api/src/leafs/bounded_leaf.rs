@@ -81,7 +81,9 @@ impl<T: Copy + PartialOrd + SampleUniform + Debug + Add<Output = T> + Sub<Output
 
     fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &mut[u8]) {
         if self.afl_fix_ratio < 0.0 {
-            self.afl_fix_ratio = bananaq::config(bananaq).unwrap().afl_fix_ratio;
+            if Ok(afl_fix_ratio) = bananaq::config(bananaq).unwrap().afl_fix_ratio {
+                self.afl_fix_ratio = afl_fix_ratio
+            }
         }
         *generic::data_mut_unsafe::<T>(mem) = match self.bounds.clone().choose(&mut rand::thread_rng()) {
             Some(bounds) => rand::thread_rng().gen_range(bounds.clone()),

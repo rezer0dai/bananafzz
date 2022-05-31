@@ -75,10 +75,12 @@ impl FuzzyQ {
         match self
             .states
             .iter()
-            //.filter(|info| id == info.1.id)
-            .filter(|info| id.clone() & info.1.id.clone())
+            // OK we will filter only full covered IDs ( avoid partially & )
+            .filter(|info| info.1.id.do_match(&id)
+            // unicorns are special, we allo non-partial finds
+                || (info.1.id.is_unicorn() && id.is_unicorn()))
             .filter(|info| !info.1.fd.is_invalid())
-            //            .inspect(|info| println!(".............{:?} -> {:X}", id, info.1.fd))
+            //.inspect(|info| println!(".............{:?} -> {:X}", id, info.1.fd))
             .collect::<Vec<_>>()
             .choose(&mut rand::thread_rng())
         {

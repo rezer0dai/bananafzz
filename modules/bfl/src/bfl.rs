@@ -229,7 +229,7 @@ info!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name())
             return false
         }
 
-trace!("---> [fid : {:?}] : loading ARG : {:?} and {:?}", poc.fid, poc.dmp.len(), poc.mem.len());
+info!("---> [fid : {:?}] : loading ARG : {}#{} with data|{:?}|", poc.fid, state.name, call.name(), poc.mem.len());
 /*
         if !self.ctor_done { // OK, AFL did good job if ctor
 error!("STOP2 -> failing ctor for : {} ( seems load args problem )", self.ctor_name);

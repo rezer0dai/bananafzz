@@ -18,6 +18,13 @@ impl StateTableId {
                 } else { self } // yes == keep horn
         }
     }
+    pub fn is_unicorn(&self) -> bool {
+        StateTableId::Id(1) & *self
+    }
+    pub fn do_match(&self, mask: &Self) -> bool {
+        let id = u64::from(self.de_horn());
+        id == id & u64::from(mask.de_horn())
+    }
 }
 
 impl PartialOrd for StateTableId {
