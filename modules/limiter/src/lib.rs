@@ -7,7 +7,7 @@ extern crate serde;
 extern crate core;
 
 use core::banana::bananaq;
-use core::banana::observer::{ICallObserver, IStateObserver};
+use core::banana::observer::{ICallObserver, IStateObserver, WantedMask};
 use core::exec::call::Call;
 use core::state::state::StateInfo;
 
@@ -26,18 +26,18 @@ struct Limiter {
 }
 
 impl ICallObserver for Limiter {
-    fn notify(&self, state: &StateInfo, _: &mut Call) -> bool {
+    fn notify(&self, state: &StateInfo, _: &mut Call) -> Result<bool, WantedMask> {
         if 0 == self.cfg.failed_limit {
-            return true;
+            return Ok(true)
         }
         if self.n_total.fetch_add(1, Ordering::Relaxed) - self.counter.load(Ordering::Relaxed)
             < self.cfg.failed_limit
         {
-            return true;
+            return Ok(true)
         }
 
         bananaq::stop(&state.bananaq).unwrap();
-        false
+        Ok(false)
     }
     fn aftermath(&self, state: &StateInfo, call: &mut Call) {
         if self.cfg.only_sucks && !call.ok() {

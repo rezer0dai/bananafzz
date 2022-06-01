@@ -9,9 +9,9 @@ use std::{thread, time};
 
 extern crate core;
 
+use core::banana::observer::{ICallObserver, IStateObserver, WantedMask};
 use core::exec::call::Call;
 use core::exec::id::CallTableId;
-use core::banana::observer::{ICallObserver, IStateObserver};
 use core::state::state::StateInfo;
 
 use std::collections::BTreeMap;
@@ -25,31 +25,31 @@ struct Sleeper {
 }
 
 impl ICallObserver for Sleeper {
-    fn notify(&self, state: &StateInfo, call: &mut Call) -> bool {
+    fn notify(&self, state: &StateInfo, call: &mut Call) -> Result<bool, WantedMask> {
         if 0 == state.sucess {
             //ctors should be as fast as possible, we want sleep operations on states
-            return true;
+            return Ok(true);
         }
         // well likely we want to introduce target list
         // intentionally slow down fuzzer may seems countraproductive
-        // though it may add fuzzing logic 
+        // though it may add fuzzing logic
         //   - some logic is hard to trigger
         //   - if that happen you want let object in that state little
         //   - and racers can try to do magic on that object / state
         //   - as if we let complicated logic state quickly end, we may loose some nice fuzzing
         //   setting
         if let Some(time) = self.target_list.get(&call.id()) {
-          thread::sleep(time::Duration::from_millis(
-              rand::thread_rng().gen_range(0..=time.clone()),
-          ));
+            thread::sleep(time::Duration::from_millis(
+                rand::thread_rng().gen_range(0..=time.clone()),
+            ));
         }
-        true
+        Ok(true)
     }
 }
 
 impl Sleeper {
     pub(crate) fn new(cfg: &SleeperConfig) -> Sleeper {
-        Sleeper { 
+        Sleeper {
             target_list: cfg
                 .target_info
                 .iter()

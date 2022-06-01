@@ -41,6 +41,7 @@ pub struct Call {
     /// ```
     ccall: fn(args: &mut [Arg]) -> CallInfo,
     n_attempts: usize,
+    oracle: u64,
 }
 
 impl Call {
@@ -93,6 +94,7 @@ impl Call {
             args: args,
             ccall: ccall,
             n_attempts: 0,
+            oracle: 0,
         }
     }
 
@@ -171,6 +173,7 @@ impl Call {
             //panic!("OBSERVER BLOCKING");
             return false;
         }
+        self.oracle = 0;
         //we want total here, otherwise calling call.dead() will be effectivelly the same as config.n_failed_notify_allowed
         self.allowed += 1;
 
@@ -256,4 +259,8 @@ impl Call {
     pub fn args_view(&self, ind: usize) -> &Arg {
         &self.args[ind]
     }
+    pub fn set_oracle(&mut self, oracle: u64) {
+        self.oracle = oracle 
+    }
+    pub fn oracle(&self) -> u64 { self.oracle }
 }

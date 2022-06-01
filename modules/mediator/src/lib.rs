@@ -11,7 +11,7 @@ use rand::Rng;
 extern crate core;
 
 use core::exec::call::Call;
-use core::banana::observer::{ICallObserver, IStateObserver};
+use core::banana::observer::{ICallObserver, IStateObserver, WantedMask};
 use core::state::state::StateInfo;
 
 extern crate common;
@@ -25,12 +25,29 @@ impl Mediator {
             stats: BTreeMap::new(),
         }
     }
-    fn notify(&mut self, state: &StateInfo, call: &mut Call) -> bool {
-        self.notify_impl(state, call).unwrap_or(true)
+    fn notify(&mut self, state: &StateInfo, _: &mut Call) -> Result<bool, WantedMask> {
+        if self.notify_impl(&u64::from(state.id)).unwrap_or(true) {
+            return Ok(true)
+        }
+        let sids = self.stats
+                    .iter()
+                    .map(|(k, _)| *k)
+                    .collect::<Vec<u64>>();
+
+        let mask = sids.iter()
+                    .filter(|&sid| self.notify_impl(sid).is_ok())
+                    .fold(0, |mask, sid| mask | sid);
+
+        Err(WantedMask{
+            mid: 2,
+            uid: 0,
+            sid: mask,
+            cid: 0,
+        })
     }
 
-    fn notify_impl(&mut self, state: &StateInfo, _call: &mut Call) -> Result<bool, ()> {
-        let cur = self.stats.get_key_value(&u64::from(state.id)).ok_or(())?.1;
+    fn notify_impl(&mut self, sid: &u64) -> Result<bool, ()> {
+        let cur = self.stats.get_key_value(sid).ok_or(())?.1;
         let min = self.stats.first_key_value().ok_or(())?.1;
         if cur == min {
             return Ok(true)

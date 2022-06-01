@@ -1,5 +1,5 @@
-use std::{collections::HashMap, rc::Rc, sync::RwLock, thread};
-use log::{debug, warn};
+use std::{collections::HashMap, rc::Rc, sync::{Arc, Condvar, Mutex, RwLock}, thread};
+use log::{debug, trace};
 
 extern crate rand;
 use rand::{seq::SliceRandom, Rng};
@@ -11,6 +11,8 @@ use state::id::StateTableId;
 use state::state::StateInfo;
 
 use config::FuzzyConfig;
+
+pub use super::observer::WantedMask;
 
 /// central structure(queue) for fuzzing - internal fuzzer manager/banana
 ///
@@ -29,7 +31,9 @@ pub struct FuzzyQ {
     qid: u64,
     active: Rc<RwLock<bool>>,
 
-    states: HashMap<thread::ThreadId, StateInfo>,
+    wanted: Arc<(Mutex<WantedMask>, Condvar)>,
+
+    states: HashMap<u64, StateInfo>,
     pub(crate) observers_state: Vec<Box<dyn IStateObserver>>,
     pub(crate) observers_call: Vec<Box<dyn ICallObserver>>,
 }
@@ -45,12 +49,69 @@ impl FuzzyQ {
             qid: rand::thread_rng().gen(),
             active: Rc::new(RwLock::new(true)),
 
+            wanted: Arc::new((Mutex::new(WantedMask::default()), Condvar::new())),
+
             states: HashMap::new(),
             observers_state: Vec::new(),
             observers_call: Vec::new(),
         }
     }
 
+    pub(crate) fn wait_for(
+        wanted: Arc<(Mutex<WantedMask>, Condvar)>,
+        uid: u64,
+        sid: u64,
+        wait_max: u64
+        ) -> Result<u64, ()> 
+    {
+        let (ref lock, ref cvar) = &*wanted;
+        //println!("----> wait for up {} vs {}", info.uid, uid);
+        let mut info = cvar.wait_timeout_while(
+                lock.lock().or_else(|_| Err(()))?, 
+                // .. maybe even nanos .. ?`
+                std::time::Duration::from_millis(wait_max),
+                |mask| { 
+                    // no specific uid and matching mask sid or sid is no important
+                    !((0 == mask.uid && (0 == mask.sid || 0 != sid & mask.sid))
+                        // or we are interested in specific uid!!
+                        || uid == mask.uid)
+                }
+                ).or_else(|_| Err(()))?.0;
+
+        //println!("----> waked up {} vs {}", info.uid, uid);
+        info.uid = uid;
+        Ok(info.cid)
+    }
+
+    pub(crate) fn land_line(&self) -> (Arc<(Mutex<WantedMask>, Condvar)>, u64, u64, u64, u64) {
+        let uid = thread::current().id();
+        let uid = u64::from(uid.as_u64());
+        let sid: u64 = if let Some(info) = self.states.get(&uid) {
+            info.id.into()
+        } else { 0 };
+        (Arc::clone(&self.wanted), uid, sid, self.cfg.n_cores, self.cfg.wait_max)
+    }
+
+    pub(crate) fn wake_up(
+        &self,
+        mask: WantedMask,
+        n_cores: u64,
+        ) -> Result<(), ()>
+    {
+        let (ref lock, ref cvar) = &*self.wanted;
+        if let Ok(mut info) = lock.lock() {
+            *info = mask
+        } else { return Err(()) }
+
+        if 0 == n_cores {
+            cvar.notify_all();
+        }
+
+        for _ in 0..n_cores { // number of cores for fuzzing
+            cvar.notify_one(); // resume selection
+        }
+        Ok(())
+    }
     pub(crate) fn qid(&self) -> u64 {
         self.qid
     }
@@ -62,6 +123,8 @@ impl FuzzyQ {
     }
     pub(crate) fn stop(&self) {
         *self.active.write().unwrap() = false;
+        // ok lets other notify to quit
+        let _ = self.wake_up(WantedMask::default(), 0);
     }
 
     /// certain calls want to intercorporate foreign state
@@ -90,12 +153,25 @@ impl FuzzyQ {
     }
 
     /// call callback
-    pub fn call_notify<'a>(&self, call: &'a mut Call) -> bool {
+    pub fn call_notify<'a>(&self, call: &'a mut Call) -> Result<bool, WantedMask> {
         if !self.active() {
-            return false;
+            return Ok(false)
         }
-        let info = &self.states[&thread::current().id()];
-        self.observers_call.iter().all(|obs| obs.notify(info, call))
+
+        // add some competition to current thread
+        if !self.wake_up(WantedMask::default(), 1).is_ok() {
+            return Ok(false)
+        }
+
+        let uid = thread::current().id();
+        let uid = u64::from(uid.as_u64());
+        let info = &self.states[&uid];
+        for obs in self.observers_call.iter() {
+            if !obs.notify(info, call)? {
+                return Ok(false)
+            }
+        }
+        Ok(true)
     }
     pub fn call_aftermath_safe<'a>(&self, info: &StateInfo, call: &'a mut Call) {
         if !self.active() {
@@ -110,10 +186,14 @@ impl FuzzyQ {
         if !self.active() {
             return;
         }
-        let info = &self.states[&thread::current().id()];
+        let uid = thread::current().id();
+        let uid = u64::from(uid.as_u64());
+
+        let info = &self.states[&uid];
         for obs in self.observers_state.iter() {
             obs.notify_dtor(info);
         }
+        let _ = self.wake_up(WantedMask::default(), 1);
     }
     /// state creation callback
     ///
@@ -173,28 +253,32 @@ debug!("QUEUE is FULL, denying entry of {:?}", fuzzy_info.id);
                 .count()
             { return false }
         } else if same_kind * self.cfg.ratio > self.cfg.max_queue_size * 1 {
-warn!("QUEUE is overpopulated of same kind, denying entry of {:?}", fuzzy_info.id);
+trace!("QUEUE is overpopulated of same kind, denying entry of {:?}", fuzzy_info.id);
             return false;
         }
 
-        if self.states.contains_key(&thread::current().id()) {
+        let uid = thread::current().id();
+        let uid = u64::from(uid.as_u64());
+        if self.states.contains_key(&uid) {
             panic!(
                 "trying to insert from same thread twice++ -> {}",
                 fuzzy_info.name
             );
         }
 
-        self.states.insert(thread::current().id(), fuzzy_info);
+        self.states.insert(uid, fuzzy_info);
         true
     }
     pub fn pop_safe(&mut self) {
         if !self.active() {
             return;
         }
-        if !self.states.contains_key(&thread::current().id()) {
+        let uid = thread::current().id();
+        let uid = u64::from(uid.as_u64());
+        if !self.states.contains_key(&uid) {
             panic!("trying to pop from same thread twice++ or from different thread at all");
         }
-        self.states.remove(&thread::current().id());
+        self.states.remove(&uid);
     }
     pub fn update_safe(&mut self, fuzzy_info: &StateInfo) {
         if !self.active() {
@@ -202,12 +286,17 @@ warn!("QUEUE is overpopulated of same kind, denying entry of {:?}", fuzzy_info.i
         }
         // here we maybe want to double check how many same "fd" are in queue, and limit it by config
         // but i did not encounter issue with this, so i am letting this pass void
-        assert!(self.states.contains_key(&thread::current().id()));
-        if let Some(info) = self.states.get_mut(&thread::current().id()) {
+        let uid = thread::current().id();
+        let uid = u64::from(uid.as_u64());
+        assert!(self.states.contains_key(&uid));
+        if let Some(info) = self.states.get_mut(&uid) {
             *info = fuzzy_info.clone();
         }
     }
     pub fn empty(&self) -> bool {
         0 == self.states.len()
+    }
+    pub fn contains(&self, uid: u64) -> bool {
+        self.states.contains_key(&uid)
     }
 }

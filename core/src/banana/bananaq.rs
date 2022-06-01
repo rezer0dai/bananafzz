@@ -1,6 +1,3 @@
-extern crate log;
-use self::log::info;
-
 use std::backtrace::Backtrace;
 
 use super::observer::{ICallObserver, IStateObserver};
@@ -88,14 +85,38 @@ pub fn call_aftermath<'a>(info: &mut StateInfo, call: &'a mut Call) -> Result<()
 }
 
 pub fn call_notify<'a>(banana: &Weak<FuzzyQ>, call: &'a mut Call) -> bool {
-    if let Some(banana) = banana.upgrade() {
-        return banana.read().unwrap().call_notify(call);
+    //print!("#");
+    // go for this call
+    loop {
+        //print!(".");
+        let (cvar, uid, sid, wait_max) = if let Some(banana) = banana.upgrade() {
+            match banana.read().unwrap().call_notify(call) {
+                Ok(ok) => return ok,
+                Err(mask) => {
+                    let(cvar, uid, sid, n_cores, wait_max) = banana.read().unwrap().land_line();
+                    // propose target from modules
+                    if !banana.read().unwrap().wake_up(mask, n_cores).is_ok() {
+                        return false
+                    }
+                    //println!("---> {mask:?}");
+                    (cvar, uid, sid, wait_max)
+                }
+            }
+        } else { return false }; // we ( banana queue ) are offline
+
+        if 0 != uid && !read_prot(banana, |banana| banana.contains(uid)).unwrap_or(true) {
+            let _ = stop(banana); // module will be stupborn, but seems object is no longer active ..
+        }
+
+        //println!("@[{uid} || {sid:X} ==> tid:{:?}];", thread::current().id());
+        if let Ok(oracle) = queue::FuzzyQ::wait_for(cvar, uid, sid, wait_max) {
+            call.set_oracle(oracle)
+        } else { return false }
     }
-    false
 }
 pub fn ctor_notify<'a>(info: StateInfo) -> bool {
     if let Some(banana) = info.bananaq.upgrade() {
-        return banana.read().unwrap().ctor_notify(info);
+        return banana.read().unwrap().ctor_notify(info)
     }
     false
 }
@@ -113,7 +134,7 @@ pub fn config(bananaq: &Weak<FuzzyQ>) -> Result<FuzzyConfig, &'static str> {
     read_prot(bananaq, |banana| banana.cfg.clone())
 }
 pub fn stop(banana: &Weak<FuzzyQ>) -> Result<(), &'static str> {
-    info!(
+    log::info!(
         "[bananaq] QUEUE STOP: {:?}",
         Backtrace::force_capture()
             .frames()

@@ -23,10 +23,10 @@ macro_rules! callback_proxy {
             }
         }
         impl ICallObserver for Proxy {
-            fn notify(&self, state: &StateInfo, call: &mut Call) -> bool {
+            fn notify(&self, state: &StateInfo, call: &mut Call) -> Result<bool, WantedMask> {
                 self.lookup
                     .write()
-                    .map_or(false, |mut target| target.notify(state, call))
+                    .map_or(Ok(false), |mut target| target.notify(state, call))
             }
             fn aftermath(&self, state: &StateInfo, call: &mut Call) {
                 if let Ok(mut target) = self.lookup.write() {

@@ -38,8 +38,6 @@ extern crate libmediator;
 extern crate libbfl;
 use libbfl::BananizedFuzzyLoopConfig;
 
-extern crate libsmb;
-
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ConfigCore {
     syncer: Option<()>,
@@ -160,10 +158,6 @@ impl Plugins {
             "libbfl" => Observer {
                 name: module.clone(),
                 obs: libbfl::observers(&cfg.bfl),
-            },
-            "libsmb" => Observer {
-                name: module.clone(),
-                obs: libsmb::observer(),
             },
             _ => Observer {
                 name: module.clone(),

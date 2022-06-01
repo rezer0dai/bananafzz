@@ -12,6 +12,7 @@ use banana::bananaq;
 use banana::bananaq::FuzzyQ;
 
 use exec::call::Call;
+use exec::id::CallTableId;
 use exec::fd_info::Fd;
 use super::id::StateTableId;
 
@@ -170,6 +171,8 @@ impl State {
         let fd = self.info.fd.clone();
         let mut dead = false;
 
+        let mut oracle: u64 = 0;
+
         let bananaq = &self.info.bananaq;
 
         let mut i = 0;
@@ -179,11 +182,22 @@ impl State {
                 break
             }
 
-            self.ccache.1 = rand::thread_rng().gen_range(0..self.groups[self.ccache.0].len());
+            loop {
+                self.ccache.1 = rand::thread_rng().gen_range(0..self.groups[self.ccache.0].len());
+                if 0 == oracle {
+                    break
+                }
+                if CallTableId::Id(oracle) == self.groups[self.ccache.0][self.ccache.1].id() {
+                    break
+                }
+            }
+
             if !self.call_view().dead(self.dead_ratio) 
                 && self.groups[self.ccache.0][self.ccache.1]
                     .do_call(&bananaq, &fd.data(), shared) 
             { return Ok(()) }
+
+            oracle = self.groups[self.ccache.0][self.ccache.1].oracle();
 
             // ok do some proportional way wait
             assert!(self.call_view().n_attempts() > 0);

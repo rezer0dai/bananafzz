@@ -1,6 +1,14 @@
 use exec::call::Call;
 use state::state::StateInfo;
 
+#[derive(Default, Debug, Clone, Copy)]
+pub struct WantedMask {
+    pub mid: u64,
+    pub uid: u64,
+    pub sid: u64,
+    pub cid: u64,
+}
+
 /// (pre) callback per (sys)-call
 pub trait ICallObserver {
 /// - you can do arbitrary action here ( pre - callback )
@@ -23,7 +31,7 @@ pub trait ICallObserver {
 ///         - however then is problem, with race-ing and loging back, but with separate module you
 ///         can solve it - manage signals, and sync at this level
 ///     - ...
-    fn notify(&self, info: &StateInfo, call: &mut Call) -> bool;
+    fn notify(&self, info: &StateInfo, call: &mut Call) -> Result<bool, WantedMask>;
     fn aftermath(&self, _info: &StateInfo, _call: &mut Call) { }
 }
 /// (pre) callback per state creation

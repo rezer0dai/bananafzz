@@ -23,6 +23,9 @@ pub struct FuzzyConfig {
     pub after_creation_sleep: u64,
     pub failing_delay_limit: u64,
     pub generate_failing_delay: usize,
+// modules related sync
+    pub n_cores: u64,
+    pub wait_max: u64,
 
     pub push_count: u64,
 

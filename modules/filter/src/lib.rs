@@ -6,7 +6,7 @@ extern crate core;
 
 use core::exec::call::Call;
 use core::exec::id::CallTableId;
-use core::banana::observer::{ICallObserver, IStateObserver};
+use core::banana::observer::{ICallObserver, IStateObserver, WantedMask};
 use core::state::state::StateInfo;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -20,11 +20,13 @@ struct Filter {
 }
 
 impl ICallObserver for Filter {
-    fn notify(&self, _: &StateInfo, call: &mut Call) -> bool {
+    fn notify(&self, _: &StateInfo, call: &mut Call) -> Result<bool, WantedMask> {
         if self.whiteset.contains(&call.id()) {
           //println!("passtrough! : {:?} -> {}", call.id(), call.name());
         }
-        self.whiteset.contains(&call.id())
+        if self.whiteset.contains(&call.id()) {
+            Ok(true)
+        } else { Err(WantedMask::default()) }
     }
 }
 

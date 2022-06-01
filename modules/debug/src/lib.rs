@@ -8,7 +8,7 @@ extern crate core;
 
 use core::exec::call::Call;
 use core::exec::id::CallTableId;
-use core::banana::observer::{ICallObserver, IStateObserver};
+use core::banana::observer::{ICallObserver, IStateObserver, WantedMask};
 use core::state::state::StateInfo;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -25,21 +25,21 @@ struct Debug {
 //use std::collections::HashMap;
 
 impl ICallObserver for Debug {
-    fn notify(&self, state: &StateInfo, call: &mut Call) -> bool {
+    fn notify(&self, state: &StateInfo, call: &mut Call) -> Result<bool, WantedMask> {
         if !self.cfg.noisy {
-            return true;
+            return Ok(true)
         }
         if !self.cfg.ctors_included && state.fd.is_invalid() {
-            return true;
+            return Ok(true)
         }
         if 0 != self.cfg.mask && !(CallTableId::Id(self.cfg.mask) & call.id()) {
-            return true;
+            return Ok(true)
         }
         if self.cfg.only_successfull && !call.ok() {
-            return true;//as this is pre-callback call.ok() will get us print second time call is hit after it suceed
+            return Ok(true) //as this is pre-callback call.ok() will get us print second time call is hit after it suceed
         }
         println!("[d]call : {:?} <{:?}> [fd:{:?} | {:?}]", call.name(), state.name, state.fd, call.success());
-        true
+        return Ok(true)
     }
 }
 

@@ -21,7 +21,7 @@ extern crate generic;
 
 extern crate core;
 
-use core::banana::observer::{ICallObserver, IStateObserver};
+use core::banana::observer::{ICallObserver, IStateObserver, WantedMask};
 use core::exec::call::Call;
 use core::state::state::StateInfo;
 

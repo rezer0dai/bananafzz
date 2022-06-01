@@ -21,5 +21,4 @@ limiter = { path = "../limiter" }
 debug = { path = "../debug" }
 mediator = { path = "../mediator" }
 bfl = { path = "../bfl" }
-smb = { path = "../smb" }
 

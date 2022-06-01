@@ -10,6 +10,7 @@ use core::exec::call::Call;
 use core::exec::id::CallTableId;
 use core::state::state::StateInfo;
 use core::banana::bananaq;
+use core::banana::observer::WantedMask;
 
 use repro::PocCall;
 use poc::{PocData, INCOMPLETE};
@@ -25,8 +26,11 @@ type TUidOnce = BTreeSet<u64>;
 type TFdOnce = HashSet< Vec<u8> >;
 
 macro_rules! call_attempts {
-    ($call:expr, $state:expr, $n_attempts:expr) => {
-        if 0 != $state.level {
+    ($call:expr, $state:expr, $n_attempts:expr, $poc:expr) => {
+        if 0 != $state.level && 0 != $poc.info.level {
+            // for $state attempts does not account before created o objects, level > 0
+            // as for $poc.info.leve we refuse to skip ctor in repro
+            // as it will lead to future broken calls by default..
             $call.attempts($n_attempts)
         } else { 0 }
     };
@@ -129,6 +133,9 @@ impl BananizedFuzzyLoop {
         if !self.poc.do_gen() && self.cfg.is_strict_repro {
             return false
         }
+        if 0 == n_attempts {
+            return false // ctors must go trough!!
+        }
 
         let max_n_try = self.cfg.max_allowed_wait_count_per_call as f64 * 0.8;
         let n_try = 1.0 * (n_attempts % self.cfg.max_allowed_wait_count_per_call) as f64;
@@ -162,7 +169,7 @@ info!("@@@@@@@@@@@@@@@@@@@@@@@@ adding one more to fuzz ({:?} x {:?}) || stats =
         self.poc.skip(self.poc_ind);
         self.poc_ind += 1;
         self.fuzzy_cnt = 0;
-warn!("$$$$$$$$$$$$$$$$$$$$$$$$ lets do skip, incomplete, [call : {:X}]({:?} x {:?}) || stats : [{:?}] add_prob:{:?}", poc.info.cid, (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed), add_prob);
+warn!("$$$$$$$$$$$$$$$$$$$$$$$$ lets do skip, incomplete, [call : {}]({:?} x {:?}) || stats : [{:?}] add_prob:{:?}", poc.info.cid, (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed), add_prob);
 
         //unsafe { INCOMPLETE = true }
         return false
@@ -183,7 +190,7 @@ debug!("pocind");
             // though when we use splice or insert, we messing with this
         // aka environnment of origina POC is changed
 debug!("#sid (object:{:?}; bananaq.len={:?}) stop or forcese  [{:?}/{:?}] -> <{:?}][{:?}> last_call {:?}", state.uid(), bananaq::len(&state.bananaq).unwrap(), self.poc_ind, self.poc.info.calls_count, u64::from(state.id), poc.info.sid, self.poc.is_last_call(1 + self.poc_ind));
-            return self.stop_or_force(call_attempts!(call, state, self.n_attempts), 0.7)
+            return self.stop_or_force(call_attempts!(call, state, self.n_attempts, poc), 0.7)
 //            return false
         }
 
@@ -203,17 +210,17 @@ debug!("uid : {:?} x {:?} \n\t FULL UID MAP {:?}", state.uid(), poc.info.uid, se
 debug!("#levels {:?} stop or force in bananaq#{:X}", (state.level, poc.info.level), bananaq::qid(&state.bananaq).unwrap());
 
             return self.stop_or_force(
-                call_attempts!(call, state, self.n_attempts), 
+                call_attempts!(call, state, self.n_attempts, poc), 
                 if 0 != poc.info.level { 0.5 } else { 0.0 });
         }
 
         //seems problem hereis poc.info.cid = 0, aka WTF ??
         if CallTableId::Id(poc.info.cid) != call.id() {
 
-debug!("#cid stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).unwrap());
+debug!("#cid ({:?} vs {:?}) stop or force in bananaq#{:X}", poc.info.cid, call.id(), bananaq::qid(&state.bananaq).unwrap());
 
 //for _ in 0..1000 { println!("cid with levels {:?}", (poc.info.level, state.level, poc.info.cid, call.id(), self.poc_ind)) }
-            return self.stop_or_force(call_attempts!(call, state, self.n_attempts), 0.0)//seems wanted call is dead ??
+            return self.stop_or_force(call_attempts!(call, state, self.n_attempts, poc), 0.0)//seems wanted call is dead ??
         }
         self.n_attempts = 0;
         self.passed += 1;
@@ -221,7 +228,7 @@ debug!("#cid stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).unwrap
 
 debug!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).unwrap());
 
-            return self.stop_or_force(call_attempts!(call, state, self.n_attempts), 1.0)//try add something
+            return self.stop_or_force(call_attempts!(call, state, self.n_attempts, poc), 1.0)//try add something
         }
 
         if let Err(msg) = call.load_args(&poc.dmp, &poc.mem, &self.fid_lookup) {
@@ -269,7 +276,7 @@ trace!("APPROVED");
 println!("LOOKUP {:?}", self.fid_lookup);
 println!("ONCE {:?}", self.fid_once);
 // could happen once ctor StateIds/StateTableId < 0x10
-error!("STOP3 {:?} vs {:?}", poc.fid, state.fd.data()); // this should not happen
+error!("STOP3 [SID:{:X} vs {:X}] {:?} vs {:?}", u64::from(state.id), poc.info.sid, poc.fid, state.fd.data()); // this should not happen
         bananaq::stop(&state.bananaq).unwrap();
 warn!("[BFL] Overlapping fid at runtime: {:?} != {:?}\n\t=> {:?}", 
     state.fd.data(), self.fid_lookup, poc.fid);
@@ -394,26 +401,46 @@ trace!("-------- CTOR : OK SHAAARE");
         true
     }
 
-    pub fn notify(&mut self, state: &StateInfo, call: &mut Call) -> bool {
+    pub fn notify(&mut self, state: &StateInfo, call: &mut Call) -> Result<bool, WantedMask> {
         if call.id().is_default() {
             assert!(0 != state.level);
-            return true
+            return Ok(true)
         }
         if !bananaq::is_active(&state.bananaq).unwrap() {
-            return false
+            return Ok(false)
         }
         if self.poc_ind > self.poc.max_ind() {
 
 error!("STOP5 {:?} / {:?}", (self.poc_ind, self.poc.max_ind()), self.poc.info.calls_count);
 
             bananaq::stop(&state.bananaq).unwrap();
-            return false
+            return Ok(false)
         }
-        if self.poc_ind < self.poc.max_ind() {
+        let approved = if self.poc_ind < self.poc.max_ind() {
             self.notify_locked_repro(state, call)
         } else {
             self.notify_locked_fuzzy(state, call)
+        };
+
+        if approved {
+            return Ok(true)
         }
+
+        if self.poc_ind == self.poc.max_ind() {
+            // seems we do fuzzy next, lets say allow all!
+            // with all 0, means we will allow anything
+            return Err(WantedMask::default())
+        }
+
+        let poc = PocCall::new(&self.poc.load(self.poc_ind));
+        Err(WantedMask{
+            mid: 42,
+            uid: if let Some(uid) = self.uid_lookup.get(&poc.info.uid) {
+                *uid
+            } else { 0 },
+            sid: poc.info.sid,
+            cid: poc.info.cid,
+        })
     }
     pub fn ctor(&mut self, state: &StateInfo) -> bool {
 trace!("NEW OBJECT!!! {:?} + {:?}", state.id, state.fd.data());
