@@ -82,7 +82,7 @@ impl FuzzyQ {
                 ).or_else(|_| Err(()))?.0;
 
         //println!("----> waked up {} vs {} || sid : {} ", info.uid, uid, info.sid);
-        info.uid = 0;//uid;
+        //info.uid = 0;//uid;
         Ok(info.cid)
     }
 
