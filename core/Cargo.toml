@@ -6,6 +6,7 @@ authors = ["re:Zer0dAI <slavic@voyager.com>"]
 [dependencies]
 log = { version = "*", features = ["std"] }
 env_logger = "*"
+clock_ticks = "*"
 
 rand = "0.8.4"
 toml = "0.5.8"

@@ -20,6 +20,7 @@ struct Syncer {
 
 impl Syncer {
     fn revert(&mut self, state: &StateInfo, _: &Call, mask: WantedMask) {
+        println!("getting revoked : {mask:?}");
         let _ = self.wildcard
                     .compare_exchange(
                         state.uid(),
@@ -40,6 +41,7 @@ impl Syncer {
                 if 0 != mask.sid && 0 == u64::from(state.id) & mask.sid {
                     return Err(mask.clone())
                 }
+                println!("APPROVED : {mask:?} :: {:?} {:?} | uid: {:?}", state.id, call.id(), state.uid());
             }
             self.wanted = None;
         }

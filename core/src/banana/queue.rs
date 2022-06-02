@@ -1,5 +1,8 @@
 use std::{collections::HashMap, rc::Rc, sync::{Arc, Condvar, Mutex, RwLock}, thread};
-use log::{debug, trace};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+};
+use log::{debug, trace, warn};
 
 extern crate rand;
 use rand::{seq::SliceRandom, Rng};
@@ -29,6 +32,8 @@ pub struct FuzzyQ {
     pub(crate) cfg: FuzzyConfig,
 
     qid: u64,
+    timestamp: AtomicU64,
+
     active: Rc<RwLock<bool>>,
 
     wanted: Arc<(Mutex<WantedMask>, Condvar)>,
@@ -50,6 +55,7 @@ impl FuzzyQ {
             active: Rc::new(RwLock::new(true)),
 
             wanted: Arc::new((Mutex::new(WantedMask::default()), Condvar::new())),
+            timestamp: AtomicU64::new(clock_ticks::precise_time_ms()),
 
             states: HashMap::new(),
             observers_state: Vec::new(),
@@ -69,7 +75,7 @@ impl FuzzyQ {
 
         let (ref lock, ref cvar) = &*wanted;
         //println!("----> wait for up {} vs {}", info.uid, uid);
-        let mut info = cvar.wait_timeout_while(
+        let info = cvar.wait_timeout_while(
                 lock.lock().or_else(|_| Err(()))?, 
                 // .. maybe even nanos .. ?`
                 std::time::Duration::from_millis(wait_max),
@@ -79,9 +85,12 @@ impl FuzzyQ {
                         // or we are interested in specific uid!!
                         || uid == mask.uid)
                 }
-                ).or_else(|_| Err(()))?.0;
+                ).or_else(|_| {
+                    warn!("[queue#wait_for] timeout for uid:{uid}; sid:{sid}"); 
+                    Err(())
+        })?.0;
 
-        //println!("----> waked up {} vs {} || sid : {} ", info.uid, uid, info.sid);
+        trace!("----> [{}] waked up {} vs {} || sid : {} + cid : {} ", info.mid, info.uid, uid, info.sid, info.cid);
         //info.uid = 0;//uid;
         Ok(info.cid)
     }
@@ -99,12 +108,12 @@ impl FuzzyQ {
         &self,
         mask: WantedMask,
         n_cores: u64,
-        ) -> Result<(), ()>
+        )
     {
         let (ref lock, ref cvar) = &*self.wanted;
         if let Ok(mut info) = lock.lock() {
             *info = mask
-        } else { return Err(()) }
+        }
 
         if 0 == n_cores {
             cvar.notify_all();
@@ -113,7 +122,9 @@ impl FuzzyQ {
         for _ in 0..n_cores { // number of cores for fuzzing
             cvar.notify_one(); // resume selection
         }
-        Ok(())
+    }
+    pub(crate) fn timestamp(&self) -> u64 {
+        self.timestamp.load(Ordering::SeqCst)
     }
     pub(crate) fn qid(&self) -> u64 {
         self.qid
@@ -127,7 +138,7 @@ impl FuzzyQ {
     pub(crate) fn stop(&self) {
         *self.active.write().unwrap() = false;
         // ok lets other notify to quit
-        let _ = self.wake_up(WantedMask::default(), 0);
+        self.wake_up(WantedMask::default(), 0);
     }
 
     /// certain calls want to intercorporate foreign state
@@ -166,12 +177,18 @@ impl FuzzyQ {
             return Ok(false)
         }
 */
+        self.timestamp.store(clock_ticks::precise_time_ms(), Ordering::SeqCst);
+
         let uid = thread::current().id();
         let uid = u64::from(uid.as_u64());
         let info = &self.states[&uid];
 
         match self.call_notify_exec(call, uid) {
-            Ok(res) => Ok(res),
+            Ok(res) => {
+                log::trace!("******* wakeup --> {}", self.states.len());
+                self.wake_up(WantedMask::default(), self.cfg.n_cores);
+                Ok(res)
+            }
             Err((n, mask)) => {
                 //println!("[{n}] reverting base on {mask:?}, sid:{:?}", info.id);
                 for obs in self.observers_call.iter().take(n) {
@@ -215,8 +232,8 @@ impl FuzzyQ {
         for obs in self.observers_state.iter() {
             obs.notify_dtor(info);
         }
-//println!("dtor tid:{uid}");
-//        let _ = self.wake_up(WantedMask::default(), self.cfg.n_cores);
+println!("dtor tid:{uid}");
+        //self.wake_up(WantedMask::default(), 0);
     }
     /// state creation callback
     ///

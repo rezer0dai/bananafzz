@@ -140,7 +140,7 @@ impl BananizedFuzzyLoop {
         let max_n_try = self.cfg.max_allowed_wait_count_per_call as f64 * 0.8;
         let n_try = 1.0 * (n_attempts % self.cfg.max_allowed_wait_count_per_call) as f64;
         if max_n_try > n_try // seems too in-efficient to do ?
-            && self.n_attempts < 0x42
+            && self.n_attempts < self.cfg.max_allowed_wait_count_per_call
             && self.passed < 10
         { // if all good, then we just need to try little more
 trace!("atempts are good, try harder => {:?} /{n_attempts}", self.poc_ind);
@@ -207,7 +207,7 @@ debug!("uid : {:?} x {:?} \n\t FULL UID MAP {:?}", state.uid(), poc.info.uid, se
 
         if state.level != poc.info.level {
 
-debug!("#levels {:?} stop or force in bananaq#{:X}", (state.level, poc.info.level), bananaq::qid(&state.bananaq).unwrap());
+error!("[bfl] object:{:X}=={} WRONG #levels {:?} stop or force in bananaq#{:X}", poc.info.sid, poc.info.sid, (state.level, poc.info.level), bananaq::qid(&state.bananaq).unwrap());
 
             return self.stop_or_force(
                 call_attempts!(call, state, self.n_attempts, poc), 
@@ -266,6 +266,7 @@ trace!("APPROVED");
         self.calls_cnt += 1;
         self.fuzzy_cnt = 0;//ok managed to go for repro
         self.poc_ind += 1; // poc_ind will be updated only if all observers agree == call was allowed
+trace!("[bfl] approved-call {} / {} :: {:?} [ uid :: {:?}", state.name, call.name(), call.id(), state.uid());
     }
     fn verify_ctor(&mut self, state: &StateInfo) -> bool {
         let poc = PocCall::new(&self.poc.load(self.poc_ind));
@@ -292,8 +293,7 @@ trace!("APPROVED-CTOR");
             return false
         }
         self.poc.runtime(self.level, state.uid(), state.fd.data());
-trace!("APPROVED-REALZZ");
-
+trace!("[bfl] approved-ctor {} :: {:?}", state.name, state.uid());
         self.poc_ind += 1;
         self.ctors_cnt += 1;
         // this matching is enforced by notify_locked deny all ctors 
@@ -343,7 +343,7 @@ trace!("........OK WE DUMPING A CALL!!! {:?}", state.uid());
         self.fuzzy_uid = 0;
         let call_data: Vec<u8> = self.call_data.drain(..).collect();
 
-        if !call.ok() {
+        if !call.ok() && state.level == self.level {
 trace!("FUZZY CAIL SOLY-SUCKS");
 //seems garbage call, skip from BFL ~ well this is for SOLY, no good for general code cov..
             return

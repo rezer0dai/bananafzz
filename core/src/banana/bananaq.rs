@@ -85,9 +85,9 @@ pub fn call_aftermath<'a>(info: &mut StateInfo, call: &'a mut Call) -> Result<()
 }
 
 pub fn call_notify<'a>(banana: &Weak<FuzzyQ>, call: &'a mut Call) -> bool {
-    //print!("#");
+    print!("#");
     // go for this call
-    loop {
+    //loop {
         //print!(".");
         let (cvar, uid, sid, wait_max, n_cores) = 
             if let Some(banana) = banana.upgrade() {
@@ -114,14 +114,15 @@ pub fn call_notify<'a>(banana: &Weak<FuzzyQ>, call: &'a mut Call) -> bool {
             match banana.call_notify(call) {
                 Ok(ok) => return ok,
                 Err(mask) => {
-                    if 0 != mask.mid 
-                        && !banana.wake_up(mask, n_cores).is_ok() 
-                    { return false }
+                    if 0 != mask.mid {
+                        banana.wake_up(mask, n_cores)
+                    }
                     //println!("---> {mask:?} ==> tid:{uid:?} + sid:{sid:?}];");
                 }
             }
         }
-    }
+    //}
+    false
 }
 pub fn ctor_notify<'a>(info: StateInfo) -> bool {
     if let Some(banana) = info.bananaq.upgrade() {
@@ -165,4 +166,7 @@ pub fn len(bananaq: &Weak<FuzzyQ>) -> Result<usize, &'static str> {
 }
 pub fn qid(bananaq: &Weak<FuzzyQ>) -> Result<u64, &'static str> {
     read_prot(bananaq, |banana| banana.qid())
+}
+pub fn timestamp(bananaq: &Weak<FuzzyQ>) -> Result<u64, &'static str> {
+    read_prot(bananaq, |banana| banana.timestamp())
 }

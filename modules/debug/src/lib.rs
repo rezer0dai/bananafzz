@@ -35,11 +35,17 @@ impl ICallObserver for Debug {
         if 0 != self.cfg.mask && !(CallTableId::Id(self.cfg.mask) & call.id()) {
             return Ok(true)
         }
-        if self.cfg.only_successfull && !call.ok() {
+        if self.cfg.only_successfull {
             return Ok(true) //as this is pre-callback call.ok() will get us print second time call is hit after it suceed
         }
-        println!("[d]call : {:?} <{:?}> [fd:{:?} | {:?}]", call.name(), state.name, state.fd, call.success());
+        println!("[d - sid:{:?}]call : {:?} <{:?}> [fd:{:?} | {:?}]", state.id, call.name(), state.name, state.fd, call.success());
         return Ok(true)
+    }
+    fn aftermath(&self, state: &StateInfo, call: &mut Call) { 
+        if !call.ok() {
+            return
+        }
+        println!("[SUCCESS]call : {:?} <{:?}> [fd:{:?} | {:?}]", call.name(), state.name, state.fd, call.success());
     }
 }
 

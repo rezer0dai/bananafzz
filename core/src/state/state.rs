@@ -164,6 +164,7 @@ impl State {
     ///     - in general this can be crucial part of fuzzer which i neglected to tinker with yet..
     pub fn do_fuzz_one(&mut self, shared: &mut[u8]) -> Result<(), String> {
         if self.info.total > self.limit {
+            log::trace!("fuzz one DONE");
             return Err(format!("[state] out of fuzzing limit total : {:?} > limit : {:?}",
                     self.info.total, self.limit))
         }
@@ -182,6 +183,10 @@ impl State {
                 break
             }
 
+            let uid = std::thread::current().id();
+            let uid = u64::from(uid.as_u64());
+            log::trace!("we will choose by oracle {oracle} uid:{uid}");
+
             loop {
                 self.ccache.1 = rand::thread_rng().gen_range(0..self.groups[self.ccache.0].len());
                 if 0 == oracle {
@@ -192,12 +197,17 @@ impl State {
                 }
             }
 
+            log::trace!("!! choosen by oracle {oracle} -> {:?} <{}> :: tid:{uid}", self.groups[self.ccache.0][self.ccache.1].id(), self.groups[self.ccache.0][self.ccache.1].name());
+
             if !self.call_view().dead(self.dead_ratio) 
                 && self.groups[self.ccache.0][self.ccache.1]
                     .do_call(&bananaq, &fd.data(), shared) 
             { return Ok(()) }
 
             oracle = self.groups[self.ccache.0][self.ccache.1].oracle();
+            if oracle != 0 {
+                log::info!("we got and oracle: {oracle} vs {:?}", self.groups[self.ccache.0][self.ccache.1].id());
+            }
 
             // ok do some proportional way wait
             assert!(self.call_view().n_attempts() > 0);
@@ -214,7 +224,6 @@ impl State {
                 .iter()
                 .any(|ref call| !call.dead(self.dead_ratio)) { continue }
             dead = true;
-            break 
         }
         self.call_dtor(shared);
 
@@ -260,6 +269,8 @@ impl State {
         assert!(usize::MAX != self.info.level, "DTOR CALLED UPDATE CALLED TOO!!");
 
         let mut call = &mut self.groups[self.ccache.0][self.ccache.1];
+        log::trace!("call <{}> success?({}) did go trough for <{}>", call.name(), call.ok(), self.info.name);
+
         let ok = if call.ok() { 1 } else { 0 };
 
         self.ccache.0 = (self.ccache.0 as isize + self.slopes[self.ccache.0][ok]) as usize;
