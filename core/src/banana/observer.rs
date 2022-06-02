@@ -9,6 +9,21 @@ pub struct WantedMask {
     pub cid: u64,
 }
 
+impl WantedMask {
+    pub fn is_wanted(&self, uid: u64, sid: u64, cid: u64) -> bool {
+        if 0 != self.uid && self.uid != uid {
+            return false
+        }
+        if 0 != self.sid && 0 != self.sid & sid {
+            return false
+        }
+        if 0 != self.cid && 0 != self.cid & cid { // or != instead of & ?
+            return false
+        }
+        true
+    }
+}
+
 /// (pre) callback per (sys)-call
 pub trait ICallObserver {
 /// - you can do arbitrary action here ( pre - callback )
