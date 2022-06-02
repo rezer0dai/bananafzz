@@ -1,6 +1,6 @@
 #![feature(map_first_last)]
 
-use std::{rc::Rc, sync::RwLock, collections::BTreeMap};
+use std::collections::BTreeMap;
 
 extern crate serde_derive;
 extern crate serde;
@@ -17,15 +17,28 @@ use core::state::state::StateInfo;
 extern crate common;
 
 struct Mediator {
-    stats: BTreeMap<u64, usize>
+    stats: BTreeMap<u64, usize>,
+    wanted: Option<WantedMask>,
 }
 impl Mediator {
     fn new() -> Self {
         Self {
             stats: BTreeMap::new(),
+            wanted: None,
         }
     }
     fn notify(&mut self, state: &StateInfo, _: &mut Call) -> Result<bool, WantedMask> {
+        if self.wanted.is_some() {
+            if let Some(ref mask) = self.wanted {
+                if 0 != mask.uid && state.uid() != mask.uid {
+                    return Err(mask.clone())
+                }
+                if 0 != mask.sid && 0 == u64::from(state.id) & mask.sid {
+                    return Err(mask.clone())
+                }
+            }
+            self.wanted = None;
+        }
         if self.notify_impl(&u64::from(state.id)).unwrap_or(true) {
             return Ok(true)
         }
@@ -70,6 +83,10 @@ impl Mediator {
         *self.stats.get_mut(&sid).unwrap() += 1;
         true
     }
+    pub fn dtor(&mut self, _state: &StateInfo) { }
+    pub fn revert(&mut self, _info: &StateInfo, _call: &Call, mask: WantedMask) { 
+        self.wanted.insert(mask);
+    }
 }
 
 common::callback_proxy!(Mediator);
@@ -78,9 +95,9 @@ pub fn observers() -> (
     Option<Box<dyn IStateObserver>>,
     Option<Box<dyn ICallObserver>>,
 ) {
-    let lookup = Rc::new(RwLock::new(Mediator::new()));
+    let lookup = Arc::new(RwLock::new(Mediator::new()));
     (
-        Some(Box::new(Proxy::new(Rc::clone(&lookup)))),
-        Some(Box::new(Proxy::new(Rc::clone(&lookup)))),
+        Some(Box::new(Proxy::new(Arc::clone(&lookup)))),
+        Some(Box::new(Proxy::new(Arc::clone(&lookup)))),
     )
 }

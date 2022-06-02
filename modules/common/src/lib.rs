@@ -14,11 +14,12 @@ pub trait ModuleCallbacks: Send + Sync {
 #[macro_export]
 macro_rules! callback_proxy {
     ($name:ident) => {
+        use std::sync::{Arc, RwLock};
         struct Proxy {
-            lookup: Rc<RwLock<$name>>,
+            lookup: Arc<RwLock<$name>>,
         }
         impl Proxy {
-            fn new(lookup: Rc<RwLock<$name>>) -> Proxy {
+            fn new(lookup: Arc<RwLock<$name>>) -> Proxy {
                 Proxy { lookup: lookup }
             }
         }
@@ -33,12 +34,22 @@ macro_rules! callback_proxy {
                     target.aftermath(state, call);
                 }
             }
+            fn revert(&self, info: &StateInfo, call: &Call, mask: WantedMask) {
+                self.lookup
+                    .write()
+                    .map_or((), |mut target| target.revert(info, call, mask))
+            }
         }
         impl IStateObserver for Proxy {
             fn notify_ctor(&self, state: &StateInfo) -> bool {
                 self.lookup
                     .write()
                     .map_or(false, |mut target| target.ctor(state))
+            }
+            fn notify_dtor(&self, state: &StateInfo) {
+                self.lookup
+                    .write()
+                    .map_or((), |mut target| target.dtor(state))
             }
         }
     };

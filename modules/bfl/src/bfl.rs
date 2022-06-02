@@ -477,4 +477,6 @@ trace!("AFTERMATH FUZZY");
         }
 */
     }
+    pub fn dtor(&mut self, state: &StateInfo) { }
+    pub fn revert(&mut self, _info: &StateInfo, _call: &Call, _mask: WantedMask) { }
 }

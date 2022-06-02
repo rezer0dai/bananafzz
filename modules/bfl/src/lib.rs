@@ -6,8 +6,6 @@ extern crate rand;
 
 extern crate libc;
 
-use std::{rc::Rc, sync::RwLock};
-
 mod bfl;
 pub mod poc;
 pub mod repro;
@@ -37,10 +35,10 @@ pub fn observers(
 ) {
     match *cfg {
         Some(ref cfg) => {
-            let lookup = Rc::new(RwLock::new(BananizedFuzzyLoop::new(cfg)));
+            let lookup = Arc::new(RwLock::new(BananizedFuzzyLoop::new(cfg)));
             (
-                Some(Box::new(Proxy::new(Rc::clone(&lookup)))),
-                Some(Box::new(Proxy::new(Rc::clone(&lookup)))),
+                Some(Box::new(Proxy::new(Arc::clone(&lookup)))),
+                Some(Box::new(Proxy::new(Arc::clone(&lookup)))),
             )
         }
         _ => (None, None),

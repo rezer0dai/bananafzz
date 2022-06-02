@@ -89,29 +89,38 @@ pub fn call_notify<'a>(banana: &Weak<FuzzyQ>, call: &'a mut Call) -> bool {
     // go for this call
     loop {
         //print!(".");
-        let (cvar, uid, sid, wait_max) = if let Some(banana) = banana.upgrade() {
-            match banana.read().unwrap().call_notify(call) {
-                Ok(ok) => return ok,
-                Err(mask) => {
-                    let(cvar, uid, sid, n_cores, wait_max) = banana.read().unwrap().land_line();
-                    // propose target from modules
-                    if !banana.read().unwrap().wake_up(mask, n_cores).is_ok() {
-                        return false
-                    }
-                    //println!("---> {mask:?}");
-                    (cvar, uid, sid, wait_max)
-                }
-            }
-        } else { return false }; // we ( banana queue ) are offline
+        let (cvar, uid, sid, wait_max, n_cores) = 
+            if let Some(banana) = banana.upgrade() {
+                let banana = banana.read().unwrap();
+                let(cvar, uid, sid, n_cores, wait_max) = banana.land_line();
+                // propose target from modules
+                (cvar, uid, sid, wait_max, n_cores)
+            } else { return false };
 
-        if 0 != uid && !read_prot(banana, |banana| banana.contains(uid)).unwrap_or(true) {
-            let _ = stop(banana); // module will be stupborn, but seems object is no longer active ..
-        }
+        if 0 != uid 
+            && !read_prot(banana, |banana| banana.contains(uid)).unwrap_or(true)
+        { let _ = stop(banana); }// module will be stupborn, but seems object is no longer active .. }
 
         //println!("@[{uid} || {sid:X} ==> tid:{:?}];", thread::current().id());
         if let Ok(oracle) = queue::FuzzyQ::wait_for(cvar, uid, sid, wait_max) {
             call.set_oracle(oracle)
         } else { return false }
+
+        if let Some(banana) = banana.upgrade() {
+            let banana = banana.read().unwrap();
+            if !banana.active() {
+                return false
+            }
+            match banana.call_notify(call) {
+                Ok(ok) => return ok,
+                Err(mask) => {
+                    if 0 != mask.mid 
+                        && !banana.wake_up(mask, n_cores).is_ok() 
+                    { return false }
+                    //println!("---> {mask:?} ==> tid:{uid:?} + sid:{sid:?}];");
+                }
+            }
+        }
     }
 }
 pub fn ctor_notify<'a>(info: StateInfo) -> bool {

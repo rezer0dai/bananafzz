@@ -60,16 +60,16 @@ impl ISerializableArg for FdHolder {
         &mut self,
         mem: &mut [u8],
         _dump: &[u8],
-        _poc_fd: &[u8],
+        poc_mem: &[u8],
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
     ) -> Result<usize, String> {
         // bfl specific
         let mut fd = self.sid.to_le_bytes().to_vec();
         fd.extend_from_slice(&[0x42u8; 4+2]);
-        fd.extend_from_slice(mem);
+        fd.extend_from_slice(poc_mem);
         
         if let Some(fd) = fd_lookup.get(&fd) {
-            mem.clone_from_slice(&fd[fd.len() - mem.len()..])
+            mem.clone_from_slice(&fd[fd.len() - poc_mem.len()..])
         } // as we may try constant FD at fuzzing, not yet added to queue ?
         else { // should be empty or invalid FD !! 
             return Err(format!("--> FD {fd:?} NOT FOUND at table\n{fd_lookup:?}"))

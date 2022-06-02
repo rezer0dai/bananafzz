@@ -64,6 +64,9 @@ impl FuzzyQ {
         wait_max: u64
         ) -> Result<u64, ()> 
     {
+        std::thread::sleep(// avoid retaking thread just by sheer opportunity
+            std::time::Duration::from_nanos(100));
+
         let (ref lock, ref cvar) = &*wanted;
         //println!("----> wait for up {} vs {}", info.uid, uid);
         let mut info = cvar.wait_timeout_while(
@@ -78,8 +81,8 @@ impl FuzzyQ {
                 }
                 ).or_else(|_| Err(()))?.0;
 
-        //println!("----> waked up {} vs {}", info.uid, uid);
-        info.uid = uid;
+        //println!("----> waked up {} vs {} || sid : {} ", info.uid, uid, info.sid);
+        info.uid = 0;//uid;
         Ok(info.cid)
     }
 
@@ -154,20 +157,39 @@ impl FuzzyQ {
 
     /// call callback
     pub fn call_notify<'a>(&self, call: &'a mut Call) -> Result<bool, WantedMask> {
+/*
         if !self.active() {
             return Ok(false)
         }
-
         // add some competition to current thread
         if !self.wake_up(WantedMask::default(), 1).is_ok() {
             return Ok(false)
         }
-
+*/
         let uid = thread::current().id();
         let uid = u64::from(uid.as_u64());
         let info = &self.states[&uid];
-        for obs in self.observers_call.iter() {
-            if !obs.notify(info, call)? {
+
+        match self.call_notify_exec(call, uid) {
+            Ok(res) => Ok(res),
+            Err((n, mask)) => {
+                //println!("[{n}] reverting base on {mask:?}, sid:{:?}", info.id);
+                for obs in self.observers_call.iter().take(n) {
+                    obs.revert(info, call, mask)
+                }
+                Err(mask)
+            }
+        }
+    }
+    fn call_notify_exec<'a>(
+        &self, 
+        call: &'a mut Call,
+        uid: u64
+        ) -> Result<bool, (usize, WantedMask)> 
+    {
+        let info = &self.states[&uid];
+        for (i, obs) in self.observers_call.iter().enumerate() {
+            if !obs.notify(info, call).or_else(|info| Err((i, info)))? {
                 return Ok(false)
             }
         }
@@ -193,7 +215,8 @@ impl FuzzyQ {
         for obs in self.observers_state.iter() {
             obs.notify_dtor(info);
         }
-        let _ = self.wake_up(WantedMask::default(), 1);
+//println!("dtor tid:{uid}");
+//        let _ = self.wake_up(WantedMask::default(), self.cfg.n_cores);
     }
     /// state creation callback
     ///
