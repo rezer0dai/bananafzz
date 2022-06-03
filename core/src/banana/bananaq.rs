@@ -83,7 +83,7 @@ pub fn call_aftermath<'a>(info: &mut StateInfo, call: &'a mut Call) -> Result<()
     }
     Err("[bananaq] aftermath after bananaq gone")
 }
-use banana::observer::WantedMask;
+
 pub fn call_notify<'a>(banana: &Weak<FuzzyQ>, call: &'a mut Call) -> bool {
     log::trace!("#");
 //    read_prot(banana, |banana| banana.wake_up(WantedMask::default(), 1));

@@ -206,7 +206,7 @@ impl State {
 
             oracle = self.groups[self.ccache.0][self.ccache.1].oracle();
             if oracle != 0 {
-                println!("we got and oracle: {oracle} vs {:?}", self.groups[self.ccache.0][self.ccache.1].id());
+                log::trace!("we got and oracle: {oracle} vs {:?}", self.groups[self.ccache.0][self.ccache.1].id());
             }
 
             // ok do some proportional way wait

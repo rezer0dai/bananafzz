@@ -28,6 +28,10 @@ impl Mediator {
         }
     }
     fn notify(&mut self, state: &StateInfo, _: &mut Call) -> Result<bool, WantedMask> {
+        let sid = u64::from(state.id);
+        if !self.stats.contains_key(&sid) {
+            self.stats.insert(sid, 0);
+        }
         if self.wanted.is_some() {
             if let Some(ref mask) = self.wanted {
                 if 0 != mask.uid && state.uid() != mask.uid {
@@ -39,9 +43,14 @@ impl Mediator {
             }
             self.wanted = None;
         }
+
         if self.notify_impl(&u64::from(state.id)).unwrap_or(true) {
             return Ok(true)
         }
+        while 0x4000 | 1 == sid {
+            println!("PLACE HOLDDDDD");
+        }
+
         let sids = self.stats
                     .iter()
                     .map(|(k, _)| *k)
@@ -51,6 +60,7 @@ impl Mediator {
                     .filter(|&sid| self.notify_impl(sid).is_ok())
                     .fold(0, |mask, sid| mask | sid);
 
+        //log::trace!("#### DENY with {mask:X} [stats:<{:?}>]", self.stats);
         Err(WantedMask{
             mid: 2,
             uid: 0,
@@ -63,10 +73,11 @@ impl Mediator {
         let cur = self.stats.get_key_value(sid).ok_or(())?.1;
         let min = self.stats.first_key_value().ok_or(())?.1;
         if cur == min {
+            //println!("-----> OK with {cur} vs MIN:{min} STATS<{:?}>", self.stats);
             return Ok(true)
         }
         // objects hard to fuzz we want to push little more
-        let prob = f64::max(0.1, 1.0 / (cur - min) as f64);
+        let prob = 1.0 - f64::max(0.01, 1.0 / (cur - min) as f64);
         Ok(rand::thread_rng().gen_bool(prob))
     }
     fn aftermath(&mut self, state: &StateInfo, call: &mut Call) -> bool {
@@ -77,9 +88,6 @@ impl Mediator {
     }
     fn ctor(&mut self, state: &StateInfo) -> bool {
         let sid = u64::from(state.id);
-        if !self.stats.contains_key(&sid) {
-            self.stats.insert(sid, 0);
-        }
         *self.stats.get_mut(&sid).unwrap() += 1;
         true
     }

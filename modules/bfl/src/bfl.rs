@@ -274,8 +274,8 @@ trace!("[bfl] approved-call {} / {} :: {:?} [ uid :: {:?}", state.name, call.nam
             return true
         }
         
-println!("LOOKUP {:?}", self.fid_lookup);
-println!("ONCE {:?}", self.fid_once);
+//println!("LOOKUP {:?}", self.fid_lookup);
+//println!("ONCE {:?}", self.fid_once);
 // could happen once ctor StateIds/StateTableId < 0x10
 error!("STOP3 [SID:{:X} vs {:X}] {:?} vs {:?}", u64::from(state.id), poc.info.sid, poc.fid, state.fd.data()); // this should not happen
         bananaq::stop(&state.bananaq).unwrap();

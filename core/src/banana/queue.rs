@@ -191,6 +191,7 @@ impl FuzzyQ {
         match self.call_notify_exec(call, uid) {
             Ok(res) => {
                 log::trace!("******* wakeup --> {}", self.states.len());
+                //self.wake_up(WantedMask::default(), 1);
                 Ok(res)
             }
             Err((n, mask)) => {
@@ -267,16 +268,19 @@ log::trace!("dtor tid:{uid}");
             return false;
         }
         if self.states.len() > self.cfg.max_queue_size {
-debug!("QUEUE is FULL, denying entry of {:?}", fuzzy_info.id);
+debug!("QUEUE is FULL, denying entry of {:?} -- {}", fuzzy_info.id, fuzzy_info.name);
             return false; //0 != same_kind
         }
         let same_kind = self
             .states
             .iter()
-            // filter out unicorns
-            .filter(|&(_, ref state)| !(state.id.clone() & StateTableId::Id(1)))
+            // filter out unicorns - no need, do_match will do it
+            //.filter(|&(_, ref state)| !state.id.is_unicorn())
             // count just same kind
-            .filter(|&(_, ref state)| (state.id.clone() & fuzzy_info.id.clone()))
+            // state.do_match(fuzzy) will does not count equally ( sub-fd will be pushed )
+            //.filter(|&(_, ref state)| state.id.do_match(&fuzzy_info.id))
+            // fuzzy.do_match(state) will DOES count equally ( sub-fd will NOT be pushed )
+            .filter(|&(_, ref state)| fuzzy_info.id.do_match(&state.id))
             .count();
 
         // forcing at least 1 object of its kind in queue is not necessary what we want, limit config expresivness
@@ -288,14 +292,17 @@ debug!("QUEUE is FULL, denying entry of {:?}", fuzzy_info.id);
         //ok seems strict check on all siblings is preferable!!
 
         // well rust, overflows are handled, kind of overkill geting here overlow checks - implmenting fuzzer not OS
-        if StateTableId::Id(1) & fuzzy_info.id.clone() { // unicorn
+        if fuzzy_info.id.is_unicorn() { // unicorn
             if self.cfg.unicorn_kin_limit < self
                 .states
                 .iter()
-                .filter(|&(_, ref state)| (state.id.clone() & StateTableId::Id(1)))
-                .filter(|&(_, ref state)| (state.id.clone() & fuzzy_info.id.clone()))
+                // just unicorns total number!!
+                .filter(|&(_, ref state)| state.id.is_unicorn())
+                //.filter(|&(_, ref state)| (state.id.de_horn().clone() & fuzzy_info.id.de_horn().clone()))
                 .count()
-            { return false }
+            { 
+                warn!("UNICORN DENY: {}", fuzzy_info.name);
+                return false }
         } else if same_kind * self.cfg.ratio > self.cfg.max_queue_size * 1 {
 trace!("QUEUE is overpopulated of same kind, denying entry of {:?}", fuzzy_info.id);
             return false;

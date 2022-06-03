@@ -10,11 +10,26 @@ pub enum StateTableId {
 }
 
 impl StateTableId {
+    // unicorn will not be used in rndfd ( will be automatically
+    // disabled ), if not used alone ( aka you querey
+    // for anything including Unicorn, then 1 flag is deleted )
+    // .. but if you want to RndFd(Unicorn) then is OK
+    // .. it will sezrch you in all Keypairs
+    pub fn unicorn(&self) -> Self {
+        match self {
+            StateTableId::Id(id) => StateTableId::Id(id | 1)
+        }
+    }
+    pub fn clone(&self) -> Self {
+        match self {
+            StateTableId::Id(id) => StateTableId::Id(id | 2)
+        }
+    }
     pub fn de_horn(self) -> Self {
         match self {
             StateTableId::Id(id) => 
                 if 1 != id { // pure unicorn ?
-                    StateTableId::Id((id >> 1) << 1) // no == de-horn
+                    StateTableId::Id(id & !1) // no == de-horn
                 } else { self } // yes == keep horn
         }
     }

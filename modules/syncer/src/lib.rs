@@ -20,7 +20,7 @@ struct Syncer {
 
 impl Syncer {
     fn revert(&mut self, state: &StateInfo, _: &Call, mask: WantedMask) {
-        println!("getting revoked : {mask:?}");
+        log::trace!("getting revoked : {mask:?}");
         let _ = self.wildcard
                     .compare_exchange(
                         state.uid(),
