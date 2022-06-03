@@ -33,6 +33,7 @@ impl Syncer {
     }
 
     fn notify(&mut self, state: &StateInfo, call: &mut Call) -> Result<bool, WantedMask> {
+        log::trace!("syncer");
         if self.wanted.is_some() {
             if let Some(ref mask) = self.wanted {
                 if 0 != mask.uid && state.uid() != mask.uid {
@@ -41,25 +42,33 @@ impl Syncer {
                 if 0 != mask.sid && 0 == u64::from(state.id) & mask.sid {
                     return Err(mask.clone())
                 }
-                println!("APPROVED : {mask:?} :: {:?} {:?} | uid: {:?}", state.id, call.id(), state.uid());
+                log::trace!("APPROVED : {mask:?} :: {:?} {:?} | uid: {:?}", state.id, call.id(), state.uid());
             }
             self.wanted = None;
         }
-        let uid = self.wildcard.load(Ordering::SeqCst);
-        if state.uid() == uid { // owned
-            return Ok(true)
-        }
-        let uid = self.notify_exec(state, call);
+        
+        let uid = self.wildcard.compare_exchange(
+            0,
+            state.uid(), // ok pikachu we choose you
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ).unwrap_or(state.uid());
+
         if 0 == uid { // uid taken
-            //println!("pass <{} :: {uid}> wait for : <{}>", state.uid(), self.wildcard.load(Ordering::SeqCst));
+            log::trace!("pass <{} :: {uid}> wait for : <{}>", state.uid(), self.wildcard.load(Ordering::SeqCst));
             return Ok(true)
         }
-        //println!("deny <{} :: {uid}> wait for : <{}>", state.uid(), self.wildcard.load(Ordering::SeqCst));
+
+        let _ = self.wildcard.compare_exchange(
+            state.uid(), 
+            0, // pikachu you failed ?
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ).unwrap_or(0);
+        log::trace!("deny <{} :: {uid}> wait for : <{}>", state.uid(), self.wildcard.load(Ordering::SeqCst));
         Err(WantedMask{
             mid: 1,
-            uid: uid,
-            sid: 0,
-            cid: 0,
+            ..WantedMask::default()
         })
     }
     fn aftermath(&self, state: &StateInfo, _call: &mut Call) {
@@ -100,19 +109,6 @@ impl Syncer {
         ) {
             info!("[syncer] pikachu is done for <{v}>")
         }
-    }
-
-    fn notify_exec(&mut self, state: &StateInfo, _call: &mut Call) -> u64 {
-        let uid = self.wildcard.load(Ordering::SeqCst);
-        if 0 != uid { // busy
-            return uid
-        }
-        self.wildcard.compare_exchange(
-            0,
-            state.uid(), // ok pikachu we choose you
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        ).unwrap_or(uid)
     }
 
     fn new() -> Self {

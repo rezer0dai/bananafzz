@@ -2,7 +2,7 @@ use std::{collections::HashMap, rc::Rc, sync::{Arc, Condvar, Mutex, RwLock}, thr
 use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
-use log::{debug, trace, warn, info};
+use log::{debug, trace, warn};
 
 extern crate rand;
 use rand::{seq::SliceRandom, Rng};
@@ -70,21 +70,17 @@ impl FuzzyQ {
         wait_max: u64
         ) -> Result<u64, ()> 
     {
-        /*
         std::thread::sleep(// avoid retaking thread just by sheer opportunity
-            std::time::Duration::from_millis(10));
-        */
+            std::time::Duration::from_millis(wait_max));
+
         let (ref lock, ref cvar) = &*wanted;
         //println!("----> wait for up {} vs {}", info.uid, uid);
-        let info = cvar.wait_timeout_while(
+        let mut info = cvar.wait_timeout_while(
                 lock.lock().or_else(|_| Err(()))?, 
                 // .. maybe even nanos .. ?`
                 std::time::Duration::from_millis(wait_max),
                 |mask| { 
-                    // no specific uid and matching mask sid or sid is no important
-                    !((0 == mask.uid && 0 != sid & mask.sid)
-                        || uid == mask.uid)
-                        // or we are interested in specific uid!!
+                    !((0 == mask.uid && 0 != sid & mask.sid) || uid == mask.uid)
                 }
                 ).or_else(|_| {
                     warn!("[queue#wait_for] timeout for uid:{uid}; sid:{sid}"); 
@@ -92,8 +88,16 @@ impl FuzzyQ {
         })?.0;
 
         trace!("----> [{}] waked up {} vs {} || sid : {} + cid : {} ", info.mid, info.uid, uid, info.sid, info.cid);
-        //info.uid = 0;//uid;
-        Ok(info.cid)
+        let cid = if uid == info.uid {
+            info.cid
+        } else { 0 };
+        if (uid == info.uid || 0 == info.uid) && sid == info.sid {
+            info.sid = 0
+        }
+        if uid == info.uid {
+            info.uid = 0
+        }
+        Ok(cid)
     }
 
     pub(crate) fn land_line(&self) -> (Arc<(Mutex<WantedMask>, Condvar)>, u64, u64, u64, u64) {
@@ -139,7 +143,7 @@ impl FuzzyQ {
     pub(crate) fn stop(&self) {
         *self.active.write().unwrap() = false;
         // ok lets other notify to quit
-        self.wake_up(WantedMask::default(), 0);
+        //self.wake_up(WantedMask::default(), 0);
     }
 
     /// certain calls want to intercorporate foreign state
@@ -186,12 +190,11 @@ impl FuzzyQ {
 
         match self.call_notify_exec(call, uid) {
             Ok(res) => {
-                trace!("******* wakeup --> {}", self.states.len());
-                self.wake_up(WantedMask::default(), self.cfg.n_cores);
+                log::trace!("******* wakeup --> {}", self.states.len());
                 Ok(res)
             }
             Err((n, mask)) => {
-                trace!("[{n}] reverting base on {mask:?}, sid:{:?} uid:{uid}", info.id);
+                log::trace!("[{n}] reverting base on {mask:?}, sid:{:?}", info.id);
                 for obs in self.observers_call.iter().take(n) {
                     obs.revert(info, call, mask)
                 }
@@ -233,7 +236,7 @@ impl FuzzyQ {
         for obs in self.observers_state.iter() {
             obs.notify_dtor(info);
         }
-println!("dtor tid:{uid}");
+log::trace!("dtor tid:{uid}");
         //self.wake_up(WantedMask::default(), 0);
     }
     /// state creation callback

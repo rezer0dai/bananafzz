@@ -426,10 +426,10 @@ error!("STOP5 {:?} / {:?}", (self.poc_ind, self.poc.max_ind()), self.poc.info.ca
             return Ok(true)
         }
 
-        if self.poc_ind == self.poc.max_ind() {
+        if self.poc_ind >= self.poc.max_ind() {
             // seems we do fuzzy next, lets say allow all!
             // with all 0, means we will allow anything
-            return Err(WantedMask::default())
+            return Err(WantedMask{mid:42, ..WantedMask::default()})
         }
 
         let poc = PocCall::new(&self.poc.load(self.poc_ind));

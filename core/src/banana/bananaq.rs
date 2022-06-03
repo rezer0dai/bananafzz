@@ -83,9 +83,10 @@ pub fn call_aftermath<'a>(info: &mut StateInfo, call: &'a mut Call) -> Result<()
     }
     Err("[bananaq] aftermath after bananaq gone")
 }
-
+use banana::observer::WantedMask;
 pub fn call_notify<'a>(banana: &Weak<FuzzyQ>, call: &'a mut Call) -> bool {
     log::trace!("#");
+//    read_prot(banana, |banana| banana.wake_up(WantedMask::default(), 1));
     // go for this call
     //loop {
         //print!(".");
@@ -102,6 +103,7 @@ pub fn call_notify<'a>(banana: &Weak<FuzzyQ>, call: &'a mut Call) -> bool {
         { let _ = stop(banana); }// module will be stupborn, but seems object is no longer active .. }
 
         //println!("@[{uid} || {sid:X} ==> tid:{:?}];", thread::current().id());
+        
         if let Ok(oracle) = queue::FuzzyQ::wait_for(cvar, uid, sid, wait_max) {
             call.set_oracle(oracle)
         } else { return false }
