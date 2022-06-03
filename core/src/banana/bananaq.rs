@@ -85,7 +85,7 @@ pub fn call_aftermath<'a>(info: &mut StateInfo, call: &'a mut Call) -> Result<()
 }
 
 pub fn call_notify<'a>(banana: &Weak<FuzzyQ>, call: &'a mut Call) -> bool {
-    print!("#");
+    log::trace!("#");
     // go for this call
     //loop {
         //print!(".");

@@ -2,7 +2,7 @@ use std::{collections::HashMap, rc::Rc, sync::{Arc, Condvar, Mutex, RwLock}, thr
 use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
-use log::{debug, trace, warn};
+use log::{debug, trace, warn, info};
 
 extern crate rand;
 use rand::{seq::SliceRandom, Rng};
@@ -70,9 +70,10 @@ impl FuzzyQ {
         wait_max: u64
         ) -> Result<u64, ()> 
     {
+        /*
         std::thread::sleep(// avoid retaking thread just by sheer opportunity
-            std::time::Duration::from_nanos(100));
-
+            std::time::Duration::from_millis(10));
+        */
         let (ref lock, ref cvar) = &*wanted;
         //println!("----> wait for up {} vs {}", info.uid, uid);
         let info = cvar.wait_timeout_while(
@@ -81,9 +82,9 @@ impl FuzzyQ {
                 std::time::Duration::from_millis(wait_max),
                 |mask| { 
                     // no specific uid and matching mask sid or sid is no important
-                    !((0 == mask.uid && (0 == mask.sid || 0 != sid & mask.sid))
-                        // or we are interested in specific uid!!
+                    !((0 == mask.uid && 0 != sid & mask.sid)
                         || uid == mask.uid)
+                        // or we are interested in specific uid!!
                 }
                 ).or_else(|_| {
                     warn!("[queue#wait_for] timeout for uid:{uid}; sid:{sid}"); 
@@ -185,12 +186,12 @@ impl FuzzyQ {
 
         match self.call_notify_exec(call, uid) {
             Ok(res) => {
-                log::trace!("******* wakeup --> {}", self.states.len());
+                trace!("******* wakeup --> {}", self.states.len());
                 self.wake_up(WantedMask::default(), self.cfg.n_cores);
                 Ok(res)
             }
             Err((n, mask)) => {
-                //println!("[{n}] reverting base on {mask:?}, sid:{:?}", info.id);
+                trace!("[{n}] reverting base on {mask:?}, sid:{:?} uid:{uid}", info.id);
                 for obs in self.observers_call.iter().take(n) {
                     obs.revert(info, call, mask)
                 }
