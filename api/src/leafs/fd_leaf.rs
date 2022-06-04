@@ -131,13 +131,15 @@ impl IArgLeaf for RndFd {
             _ => {
                 mem.clone_from_slice(&Fd::dummy(self.size()).data());
 
-                let fd = match bananaq::get_rnd_fd(bananaq, self.sid.clone(), self.size) {
-                    Ok(fd) => fd,
-                    Err(_) => return,
+                let fd = loop {
+                    let fd = match bananaq::get_rnd_fd(bananaq, self.sid.clone(), self.size) {
+                        Ok(fd) => fd,
+                        Err(_) => return,
+                    };
+                    if fd.data().iter().any(|&b| 0 != b) {
+                        break fd
+                    }
                 };
-                if fd.data().is_empty() {
-                    return;
-                }
                 if fd.data().len() != mem.len() {
                     //unsafe { asm!("int3") }
                     panic!("Random argument selection failed on size mismatch of : {:?} where : {} vs {}", self.sid, fd.data().len(), mem.len())
