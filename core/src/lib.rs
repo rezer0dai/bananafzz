@@ -2,6 +2,8 @@
 
 extern crate log;
 
+extern crate clock_ticks;
+
 #[macro_use]
 extern crate serde_derive;
 
