@@ -139,6 +139,11 @@ impl IArgLeaf for RndFd {
                     if fd.data().iter().any(|&b| 0 != b) {
                         break fd
                     }
+                    if !bananaq::is_active(bananaq).unwrap_or(false) {
+                        return
+                    }
+                    // lets get other too to work
+                    std::thread::yield_now();
                 };
                 if fd.data().len() != mem.len() {
                     //unsafe { asm!("int3") }

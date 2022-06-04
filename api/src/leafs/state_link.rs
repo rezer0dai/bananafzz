@@ -5,12 +5,8 @@ use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 use self::core::generator::serialize::SerializationInfo;
 
-use self::core::banana::bananaq::{is_active, FuzzyQ};
-use std::{
-    thread,
-    sync::Weak,
-    time::Duration,
-};
+use self::core::banana::bananaq::{self, FuzzyQ};
+use std::sync::Weak;
 
 pub struct StateLink<F> {
     arg: Box<dyn IArgLeaf>,
@@ -66,11 +62,11 @@ where
             if (self.approve)(mem, fd, shared) {
                 break
             }
-            if !is_active(bananaq).unwrap_or(false) {
+            if !bananaq::is_active(bananaq).unwrap_or(false) {
                 break
             }
             // lets get other too to work
-            thread::sleep(Duration::from_nanos(1));
+            std::thread::yield_now();
         }
     }
     fn save_shared(&mut self, mem: &[u8], shared: &mut [u8]) {
