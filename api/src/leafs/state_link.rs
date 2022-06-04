@@ -5,7 +5,7 @@ use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 use self::core::generator::serialize::SerializationInfo;
 
-use self::core::banana::bananaq::FuzzyQ;
+use self::core::banana::bananaq::{is_active, FuzzyQ};
 use std::{
     thread,
     sync::Weak,
@@ -64,6 +64,9 @@ where
         loop {
             self.arg.generate_unsafe(bananaq, mem, fd, shared);
             if (self.approve)(mem, fd, shared) {
+                break
+            }
+            if !is_active(bananaq).unwrap_or(false) {
                 break
             }
             // lets get other too to work
