@@ -5,7 +5,7 @@ use self::core::generator::leaf::IArgLeaf;
 use self::core::generator::serialize::ISerializableArg;
 use self::core::generator::serialize::SerializationInfo;
 
-use self::core::banana::bananaq::{self, FuzzyQ};
+use self::core::banana::bananaq::FuzzyQ;
 use std::sync::Weak;
 
 pub struct StateLink<F> {
@@ -50,24 +50,17 @@ where
         self.arg.name()
     }
 
-    fn generate_unsafe(
+    fn generate_conditioned(
         &mut self,
         bananaq: &Weak<FuzzyQ>,
         mem: &mut [u8],
         fd: &[u8],
         shared: &mut[u8],
-    ) {
-        loop {
-            self.arg.generate_unsafe(bananaq, mem, fd, shared);
-            if (self.approve)(mem, fd, shared) {
-                break
-            }
-            if !bananaq::is_active(bananaq).unwrap_or(false) {
-                break
-            }
-            // lets get other too to work
-            std::thread::yield_now();
+    ) -> bool {
+        if !self.arg.generate_unsafe(bananaq, mem, fd, shared) {
+            return false
         }
+        (self.approve)(mem, fd, shared)
     }
     fn save_shared(&mut self, mem: &[u8], shared: &mut [u8]) {
         self.arg.save_shared(mem, shared)

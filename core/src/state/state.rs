@@ -210,8 +210,7 @@ impl State {
             }
 
             // ok do some proportional way wait
-            assert!(self.call_view().n_attempts() > 0);
-            thread::sleep(Duration::from_nanos(1 + 100 * ((self.call_view().n_attempts() - 1) as u64) % self.failing_delay_limit));
+            thread::sleep(Duration::from_nanos(1 + 100 * (self.call_view().n_attempts() as u64) % self.failing_delay_limit));
             /*
             if self.level() > 0 && 1 != self.groups[self.ccache.0].len() {
                 thread::sleep(Duration::from_nanos(1 + 100 * ((self.call_view().n_attempts() - 1) as u64) % self.failing_delay_limit));

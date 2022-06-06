@@ -16,6 +16,7 @@ pub struct FuzzyConfig {
 
     pub new_limit: usize,
     pub dup_limit: usize,
+    pub rep_limit: usize,
 
 // fuzzer specifics
     pub active_time: u64,

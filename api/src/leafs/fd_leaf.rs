@@ -92,11 +92,11 @@ impl IArgLeaf for FdHolder {
         mem: &mut [u8],
         fd: &[u8],
         shared: &mut[u8],
-    ) {
+    ) -> bool {
         self.fds
             .choose_mut(&mut rand::thread_rng())
             .unwrap()
-            .generate(bananaq, mem, fd, shared);
+            .generate(bananaq, mem, fd, shared)
     }
 }
 
@@ -123,7 +123,7 @@ impl IArgLeaf for RndFd {
     /// 4:6 we share valid object / state
     ///
     /// other time we provide NULL or invalid one
-    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], _: &[u8], _: &mut[u8]) {
+    fn generate_conditioned(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], _: &[u8], _: &mut[u8]) -> bool {
         // for soly we skip dummy & invalid
         match rand::thread_rng().gen_range(2u8..=7) {
             0 => mem.clone_from_slice(&Fd::dummy(self.size()).data()),
@@ -131,20 +131,15 @@ impl IArgLeaf for RndFd {
             _ => {
                 mem.clone_from_slice(&Fd::dummy(self.size()).data());
 
-                let fd = loop {
-                    let fd = match bananaq::get_rnd_fd(bananaq, self.sid.clone(), self.size) {
-                        Ok(fd) => fd,
-                        Err(_) => return,
-                    };
-                    if fd.data().iter().any(|&b| 0 != b) {
-                        break fd
-                    }
-                    if !bananaq::is_active(bananaq).unwrap_or(false) {
-                        return
-                    }
-                    // lets get other too to work
-                    std::thread::yield_now();
+                let fd = match bananaq::get_rnd_fd(bananaq, self.sid.clone(), self.size) {
+                    Ok(fd) => fd,
+                    Err(_) => return false,
                 };
+
+                if fd.data().iter().take(8).all(|&b| 0 == b) {
+                    return false
+                }
+
                 if fd.data().len() != mem.len() {
                     //unsafe { asm!("int3") }
                     panic!("Random argument selection failed on size mismatch of : {:?} where : {} vs {}", self.sid, fd.data().len(), mem.len())
@@ -153,6 +148,7 @@ impl IArgLeaf for RndFd {
                 mem.clone_from_slice(fd.data());
             }
         };
+        true
     }
 }
 

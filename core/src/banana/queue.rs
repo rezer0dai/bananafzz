@@ -158,7 +158,7 @@ impl FuzzyQ {
             .states
             .iter()
             // OK we will filter only full covered IDs ( avoid partially & )
-            .filter(|info| info.1.id.do_match(&id)
+            .filter(|info| id.do_match(&info.1.id)//.do_match(&id)
             // unicorns are special, we allo non-partial finds
                 || (info.1.id.is_unicorn() && id.is_unicorn()))
             .filter(|info| !info.1.fd.is_invalid())
@@ -280,7 +280,8 @@ debug!("QUEUE is FULL, denying entry of {:?} -- {}", fuzzy_info.id, fuzzy_info.n
             // state.do_match(fuzzy) will does not count equally ( sub-fd will be pushed )
             //.filter(|&(_, ref state)| state.id.do_match(&fuzzy_info.id))
             // fuzzy.do_match(state) will DOES count equally ( sub-fd will NOT be pushed )
-            .filter(|&(_, ref state)| fuzzy_info.id.do_match(&state.id))
+            //.filter(|&(_, ref state)| fuzzy_info.id.do_match(&state.id))
+            .filter(|&(_, ref state)| state.id.core_flags() & fuzzy_info.id.core_flags())
             .count();
 
         // forcing at least 1 object of its kind in queue is not necessary what we want, limit config expresivness

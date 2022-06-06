@@ -42,7 +42,7 @@ impl<T> IArgLeaf for Bfl<T>
         self.leaf.name()
     }
 
-    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], fd: &[u8], shared: &mut[u8]) {
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], fd: &[u8], shared: &mut[u8]) -> bool {
         self.leaf.generate_unsafe(bananaq, mem, fd, shared)
     }
     fn save_shared(&mut self, mem: &[u8], shared: &mut[u8]) { 

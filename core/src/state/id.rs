@@ -20,9 +20,15 @@ impl StateTableId {
             StateTableId::Id(id) => StateTableId::Id(id | 1)
         }
     }
-    pub fn clone(&self) -> Self {
+    pub fn racer(&self) -> Self {
+        assert!(false);
         match self {
             StateTableId::Id(id) => StateTableId::Id(id | 2)
+        }
+    }
+    pub fn core_flags(self) -> Self {
+        match self {
+            StateTableId::Id(id) => StateTableId::Id(id & !0xFF)
         }
     }
     pub fn de_horn(self) -> Self {

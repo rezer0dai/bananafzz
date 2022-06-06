@@ -79,7 +79,7 @@ impl<T: Copy + PartialOrd + SampleUniform + Debug + Add<Output = T> + Sub<Output
 
     fn name(&self) -> &'static str { "Bounded" }
 
-    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &mut[u8]) {
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], _: &[u8], _: &mut[u8]) -> bool {
         if self.afl_fix_ratio < 0.0 {
             if let Ok(config) = bananaq::config(bananaq) {
                 self.afl_fix_ratio = config.afl_fix_ratio
@@ -89,6 +89,7 @@ impl<T: Copy + PartialOrd + SampleUniform + Debug + Add<Output = T> + Sub<Output
             Some(bounds) => rand::thread_rng().gen_range(bounds.clone()),
             None => panic!("nothing in bound array ?"),
         };
+        true
     }
 
 }
@@ -122,10 +123,11 @@ impl<T: Copy + PartialOrd + SampleUniform + Debug + Add<Output = T> + Sub<Output
 
     fn name(&self) -> &'static str { "BoundedOverX" }
 
-    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]) {
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]) -> bool {
         self.bounded.generate_unsafe(bananaq, mem, fd, shared);
         let x = self.x.pow((*generic::data_const_unsafe::<T>(mem)).into() as u32);
         *generic::data_mut_unsafe::<T>(mem) = x.into();
+        true
     }
 }
 // bfl should learn fast that it does not make sense to modify

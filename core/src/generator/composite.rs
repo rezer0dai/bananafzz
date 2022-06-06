@@ -124,7 +124,7 @@ impl IArgLeaf for ArgComposite {
     fn name(&self) -> &'static str { self.name }
 
     //better if this will be private ( different trait dont used in queue )
-    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]) {
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]) -> bool {
         // for &(off, ref mut arg) in self.args.iter() {
         //     let size = arg.size();
         //     arg.generate(&mut mem[off..off+size])
@@ -134,12 +134,17 @@ impl IArgLeaf for ArgComposite {
         for i in 0..self.args.len() {
             let (off, ref mut arg) = self.args[i];
             let size = arg.size();
-            arg.generate(bananaq, &mut mem[off..off+size], fd, shared)
+            if !arg.generate(bananaq, &mut mem[off..off+size], fd, shared) {
+                return false
+            }
         }
 
         if let Some(ref mut logicer) = &mut self.logicer {
-            logicer.generate_unsafe(bananaq, mem, fd, shared)
+            if !logicer.generate_unsafe(bananaq, mem, fd, shared) {
+                return false
+            }
         }//we could use function instead of IArgLeaf, but likely we want to the same with "load" in the future
+        true
     }
     fn save_shared(&mut self, mem: &[u8], shared: &mut[u8]) { 
         for i in 0..self.args.len() {

@@ -12,7 +12,7 @@ pub use leafs::state_link::StateLink;
 // you need to be sure in time you call this arg
 // there is ensured approve() = true for some!
 #[macro_export]
-macro_rules! state_link {
+macro_rules! requires {
     ($iarg:expr, $approve:expr) => {
         api::StateLink::new(Box::new($iarg), $approve)
     };
@@ -21,8 +21,17 @@ macro_rules! state_link {
 pub use leafs::shared_leaf::SharedWrite;
 
 #[macro_export]
-macro_rules! shared_write {
+macro_rules! pin2state {
     ($off:expr, $iarg:expr) => {
         api::SharedWrite::partial($off, Box::new($iarg))
+    };
+}
+
+pub use leafs::transform::Transform;
+
+#[macro_export]
+macro_rules! transform {
+    ($iarg:expr, $transform:expr) => {
+        api::Transform::new(Box::new($iarg), $transform)
     };
 }

@@ -1,6 +1,6 @@
 use super::serialize::ISerializableArg;
 
-use super::super::banana::bananaq::FuzzyQ;
+use super::super::banana::bananaq::{self, FuzzyQ};
 use std::sync::Weak;
 
 
@@ -41,14 +41,28 @@ pub trait IArgLeaf : ISerializableArg {
     ///     }
     /// }
     /// ```
-    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]);
+    fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]) -> bool {
+        let limit = if let Ok(cfg) = bananaq::config(bananaq) {
+            cfg.rep_limit
+        } else { 0 };
+
+        for _ in 0..limit {
+            if self.generate_conditioned(bananaq, mem, fd, shared) {
+                return true
+            }
+            std::thread::yield_now();
+        }
+        false
+    }
+
+    fn generate_conditioned(&mut self, _bananaq: &Weak<FuzzyQ>, _mem: &mut[u8], _fd: &[u8], _shared: &mut[u8]) -> bool { todo!("DO-IMPLEMENT-your::generate_unsafe!!") }
 
     /// wrapping GenerateImpl per Argument, to check slice length corectness!
-    fn generate(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]) {
+    fn generate(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]) -> bool {
         if mem.len() != self.size() {
             panic!("trying to generate Argument with wrong size {} -> {} vs {}", self.name(), mem.len(), self.size());
         }
-        self.generate_unsafe(bananaq, mem, fd, shared);
+        self.generate_unsafe(bananaq, mem, fd, shared)
     }
 
     fn save_shared(&mut self, _mem: &[u8], _shared: &mut[u8]) { }

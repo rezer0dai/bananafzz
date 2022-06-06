@@ -106,21 +106,22 @@ impl Call {
     /// 4. (do_call_impl)invoke function responsible to invoke targeted call
     /// 5. store results
     pub fn do_call(&mut self, bananaq: &Weak<FuzzyQ>, fd: &[u8], shared: &mut[u8]) -> bool {
-        self.n_attempts += 1;
-
         let generate_failing_delay = if let Ok(config) = bananaq::config(&bananaq) {
             config.generate_failing_delay
         } else { return false };
 
-        self.total += 1;
         for arg in self.args.iter_mut() {
-            if 1 != self.n_attempts % generate_failing_delay { 
+            if 0 != self.n_attempts % generate_failing_delay { 
                 break; // observer may delay us cuz wait, but some time refresh 
             }
 
-            arg.do_generate(bananaq, fd, shared);
+            if !arg.do_generate(bananaq, fd, shared) {
+                return false
+            }
         }
 
+        self.total += 1;
+        self.n_attempts += 1;
         if !self.do_call_safe(bananaq) {
             return false;
         }
