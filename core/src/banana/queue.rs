@@ -70,8 +70,10 @@ impl FuzzyQ {
         wait_max: u64
         ) -> Result<u64, ()> 
     {
-        std::thread::sleep(// avoid retaking thread just by sheer opportunity
-            std::time::Duration::from_millis(wait_max));
+//        std::thread::sleep(// avoid retaking thread just by sheer opportunity
+//            std::time::Duration::from_millis(wait_max));
+
+        std::thread::yield_now();
 
         let (ref lock, ref cvar) = &*wanted;
         //println!("----> wait for up {} vs {}", info.uid, uid);

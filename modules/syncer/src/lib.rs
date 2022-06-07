@@ -95,7 +95,9 @@ impl Syncer {
         } else {
             //println!("CTOR:: yop, it is the thing ..");
             false //false// its OK, it can be previous allowed
-        }
+        };
+        true // ok ignore result, everytime allows
+            // TODO: rewrite, but now needed cuz bfl !!
         //}; if ret {println!("X2-GOGOGGOGO");} ret
     }
 

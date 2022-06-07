@@ -119,6 +119,9 @@ pub fn call_notify<'a>(banana: &Weak<FuzzyQ>, call: &'a mut Call) -> bool {
                     if 0 != mask.mid {
                         banana.wake_up(mask, n_cores)
                     }
+                    if uid == mask.uid {
+                        call.set_oracle(mask.cid)
+                    }
                     //println!("---> {mask:?} ==> tid:{uid:?} + sid:{sid:?}];");
                 }
             }
