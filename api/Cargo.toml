@@ -6,6 +6,9 @@ authors = ["re:Zer0dAI <team@bananas.com>"]
 [dependencies]
 rand = "0.8.4"
 byteorder = { version = "1.4.3" }
+log = { version = "*", features = ["std"] }
+env_logger = "*"
+
 core = { path = "../core" }
 generic = { path = "../generic" }
 

@@ -26,10 +26,9 @@ use super::phantom_leaf::Phantom;
 pub struct FdHolder {
     size: usize,
     fds: Vec<Box<dyn IArgLeaf>>,
-    sid: u64,
 }
 impl FdHolder {
-    pub fn new(size: usize, sid: u64, fds: Vec<Box<dyn IArgLeaf>>) -> FdHolder {
+    pub fn new(size: usize, fds: Vec<Box<dyn IArgLeaf>>) -> FdHolder {
         if fds.iter().any(|fd| fd.size() > size) {
             panic!("FdHolder::new .. one of fd have bigger size than declared!")
         }
@@ -37,14 +36,13 @@ impl FdHolder {
         FdHolder {
             size: size,
             fds: fds,
-            sid: sid,
         }
     }
-    pub fn dup(sid: u64, fd: &[u8]) -> FdHolder {
-        FdHolder::new(fd.len(), sid, vec![Box::new(Const::new(fd))])
+    pub fn dup(fd: &[u8]) -> FdHolder {
+        FdHolder::new(fd.len(), vec![Box::new(Const::new(fd))])
     }
-    pub fn holder(sid: u64, size: usize) -> FdHolder {
-        FdHolder::new(size, sid, vec![Box::new(Phantom::new(size))])
+    pub fn holder(size: usize) -> FdHolder {
+        FdHolder::new(size, vec![Box::new(Phantom::new(size))])
     }
 }
 /// we just copy out whatever was generated, as it is stored in &mem before doing serialization
@@ -61,11 +59,11 @@ impl ISerializableArg for FdHolder {
         mem: &mut [u8],
         _dump: &[u8],
         poc_mem: &[u8],
+        prefix: &[u8],
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
     ) -> Result<usize, String> {
         // bfl specific
-        let mut fd = self.sid.to_le_bytes().to_vec();
-        fd.extend_from_slice(&[0x42u8; 4+2]);
+        let mut fd = prefix.to_vec();
         fd.extend_from_slice(poc_mem);
         
         if let Some(fd) = fd_lookup.get(&fd) {
@@ -103,11 +101,15 @@ impl IArgLeaf for FdHolder {
 pub struct RndFd {
     sid: StateTableId,
     size: usize,
+    offset: usize,
 }
 
 impl RndFd {
     pub fn new(sid: StateTableId, size: usize) -> FdHolder {
-        FdHolder::new(size, sid.into(), vec![Box::new(RndFd { sid: sid, size: size })])
+        FdHolder::new(size, vec![Box::new(RndFd { sid, size, offset: 0 })])
+    }
+    pub fn off(sid: StateTableId, size: usize, offset: usize) -> FdHolder {
+        FdHolder::new(size, vec![Box::new(RndFd { sid, size, offset })])
     }
 }
 
@@ -140,12 +142,12 @@ impl IArgLeaf for RndFd {
                     return false
                 }
 
-                if fd.data().len() != mem.len() {
-                    //unsafe { asm!("int3") }
+                if fd.data().len() < mem.len() {
                     panic!("Random argument selection failed on size mismatch of : {:?} where : {} vs {}", self.sid, fd.data().len(), mem.len())
+                } else if fd.data().len() != mem.len() {
+                    log::debug!("Random argument selection failed on size mismatch of : {:?} where : {} vs {}", self.sid, fd.data().len(), mem.len());
                 }
-                //mem[..fd.len()].clone_from_slice(&fd);
-                mem.clone_from_slice(fd.data());
+                mem.clone_from_slice(&fd.data()[self.offset..][..self.size]);
             }
         };
         true

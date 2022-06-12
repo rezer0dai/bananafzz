@@ -93,7 +93,7 @@ impl Mediator {
     }
     pub fn dtor(&mut self, _state: &StateInfo) { }
     pub fn revert(&mut self, _info: &StateInfo, _call: &Call, mask: WantedMask) { 
-        self.wanted.insert(mask);
+        let _ = self.wanted.insert(mask);
     }
 }
 

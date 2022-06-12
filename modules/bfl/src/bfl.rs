@@ -13,7 +13,7 @@ use core::banana::bananaq;
 use core::banana::observer::WantedMask;
 
 use repro::PocCall;
-use poc::{PocData, INCOMPLETE};
+use poc::PocData;//{PocData, INCOMPLETE};
 pub use info::{BananizedFuzzyLoopConfig, PocCallHeader};
 
 extern crate rand;
@@ -107,14 +107,23 @@ impl BananizedFuzzyLoop {
         self.uid_lookup.insert(uid_a, uid_b);
         true
     }
+    // for now ignore, fid it is little bit tricky for FdHolder
+    // .. if fd overlaps between different objects need to handle it
+    // .. bascically per call having FdHolder need to pass targeted Fd
+    // .. problem with really generic ones ( like unicorn )
+    // but then again, in resolve fid, if too generic we will sweep them all
+    // again problem with overlaping fd cross objects..
+    fn sid_prefix(_sid: u64) -> Vec<u8> {
+        let mut prefix = vec![];//sid.to_le_bytes().to_vec();
+        prefix.extend_from_slice(&[66u8; 4+2]);
+        prefix
+    }
     fn resolve_fid(&mut self, sid: u64, fid_a: &[u8], fid_b: &[u8]) -> bool {
-        let mut sid_fid_a = sid.to_le_bytes().to_vec();
-        sid_fid_a.extend_from_slice(&[0x42u8; 6]);
+        let mut sid_fid_a = Self::sid_prefix(sid);
         sid_fid_a.extend_from_slice(fid_a);
         let sid_fid_a = sid_fid_a;
 
-        let mut sid_fid_b = sid.to_le_bytes().to_vec();
-        sid_fid_b.extend_from_slice(&[66u8; 4+2]);
+        let mut sid_fid_b = Self::sid_prefix(sid);
         sid_fid_b.extend_from_slice(fid_b);
         let sid_fid_b = sid_fid_b;
 
@@ -231,12 +240,12 @@ debug!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).un
             return self.stop_or_force(call_attempts!(call, state, self.n_attempts, poc), 1.0)//try add something
         }
 
-        if let Err(msg) = call.load_args(&poc.dmp, &poc.mem, &self.fid_lookup) {
-info!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name());
+        if let Err(msg) = call.load_args(&poc.dmp, &poc.mem, &Self::sid_prefix(poc.info.sid), &self.fid_lookup) {
+error!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name());
             return false
         }
 
-info!("---> [fid : {:?}] : loading ARG : {}#{} with data|{:?}|", poc.fid, state.name, call.name(), poc.mem.len());
+trace!("---> [fid : {:?}] : loading ARG : {}#{} with data|{:?}|", poc.fid, state.name, call.name(), poc.mem.len());
 /*
         if !self.ctor_done { // OK, AFL did good job if ctor
 error!("STOP2 -> failing ctor for : {} ( seems load args problem )", self.ctor_name);
@@ -477,6 +486,6 @@ trace!("AFTERMATH FUZZY");
         }
 */
     }
-    pub fn dtor(&mut self, state: &StateInfo) { }
+    pub fn dtor(&mut self, _state: &StateInfo) { }
     pub fn revert(&mut self, _info: &StateInfo, _call: &Call, _mask: WantedMask) { }
 }

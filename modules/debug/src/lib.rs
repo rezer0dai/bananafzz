@@ -38,11 +38,17 @@ impl ICallObserver for Debug {
         if self.cfg.only_successfull {
             return Ok(true) //as this is pre-callback call.ok() will get us print second time call is hit after it suceed
         }
+        if 0 == u64::from(call.id()) {
+            return Ok(true)
+        }
         println!("[d - sid:{:?}]call : {:?} <{:?}> [fd:{:?} | {:?}]", state.id, call.name(), state.name, state.fd, call.success());
         return Ok(true)
     }
     fn aftermath(&self, state: &StateInfo, call: &mut Call) { 
         if !call.ok() {
+            return
+        }
+        if 0 == u64::from(call.id()) {
             return
         }
         println!("[SUCCESS]call : {:?} <{:?}> [fd:{:?} | {:?}]", call.name(), state.name, state.fd, call.success());

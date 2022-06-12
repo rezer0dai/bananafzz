@@ -29,7 +29,7 @@ impl Syncer {
                         Ordering::SeqCst,
                     );
 
-        self.wanted.insert(mask);
+        let _ = self.wanted.insert(mask);
     }
 
     fn notify(&mut self, state: &StateInfo, call: &mut Call) -> Result<bool, WantedMask> {

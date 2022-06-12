@@ -153,12 +153,12 @@ impl Call {
             .collect::<Vec<u8>>()
     }
 
-    pub fn load_args<'a>(&mut self, dump: &[u8], data: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> Result<(), String> {
+    pub fn load_args<'a>(&mut self, dump: &[u8], data: &[u8], prefix: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> Result<(), String> {
         let mut off = 0;
         let mut off_mem = 0;
         for arg in self.args.iter_mut() {
             let asize = arg.data().len();
-            let size = arg.load(&dump[off..], &data[off_mem..][..asize], fd_lookup)?;
+            let size = arg.load(&dump[off..], &data[off_mem..][..asize], prefix, fd_lookup)?;
             off += size;
             off_mem += asize;
         }

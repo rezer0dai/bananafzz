@@ -137,10 +137,11 @@ impl Arg {
         &mut self,
         dump: &[u8],
         data: &[u8],
+        prefix: &[u8], 
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
     ) -> Result<usize, String> {
         self.generator
-            .load(self.data.data_mut(), dump, data, fd_lookup)
+            .load(self.data.data_mut(), dump, data, prefix, fd_lookup)
     }
 
     /// yep, little bit of unsafety, as we want to invoke calls which are basically C stuffs

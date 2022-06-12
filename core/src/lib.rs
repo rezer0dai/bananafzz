@@ -20,30 +20,18 @@ extern crate generic;
 #[macro_export]
 macro_rules! arg {
     ($arg:expr) => {
-        Arg::primitive_arg(Box::new($arg))
-    };
-}
-#[macro_export]
-macro_rules! mem {
-    ($arg:expr) => {
         Arg::memory_arg(Box::new($arg))
     };
 }
 
 #[macro_export]
-macro_rules! p_val {
+macro_rules! val {
     ($p:expr) => {
         *$p.data_const_unsafe()
     };
 }
 #[macro_export]
-macro_rules! p_mem {
-    ($p:expr) => {
-        $p.data_const_unsafe()
-    };
-}
-#[macro_export]
-macro_rules! p_mut {
+macro_rules! val_mut {
     ($p:expr) => {
         $p.data_mut_unsafe()
     };

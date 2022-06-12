@@ -33,9 +33,10 @@ impl<F> ISerializableArg for StateLink<F> {
         mem: &mut [u8],
         dump: &[u8],
         poc_fd: &[u8],
+        prefix: &[u8], 
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
     ) -> Result<usize, String> {
-        self.arg.load(mem, dump, poc_fd, fd_lookup)
+        self.arg.load(mem, dump, poc_fd, prefix, fd_lookup)
     }
 }
 impl<F> IArgLeaf for StateLink<F>
