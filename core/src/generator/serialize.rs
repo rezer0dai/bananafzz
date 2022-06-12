@@ -34,6 +34,7 @@ pub trait ISerializableArg {
                 prefix : String::from(""),
             }]
     }
+    fn mem(&self, mem: &[u8]) -> Vec<u8> { mem.to_vec() }
 
     // dump is easy as even in ptr in argument we just fold those data
     fn dump(&self, mem: &[u8]) -> Vec<u8> {

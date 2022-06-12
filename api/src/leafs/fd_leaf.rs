@@ -8,8 +8,7 @@ extern crate generic;
 
 extern crate core;
 use self::core::generator::leaf::IArgLeaf;
-use self::core::generator::serialize::ISerializableArg;
-use self::core::generator::serialize::SerializationInfo;
+use self::core::generator::serialize::{ISerializableArg,SerializationInfo};
 use self::core::state::id::StateTableId;
 
 use self::core::banana::bananaq::{self, FuzzyQ};
@@ -57,21 +56,18 @@ impl ISerializableArg for FdHolder {
     fn load(
         &mut self,
         mem: &mut [u8],
-        _dump: &[u8],
+        dump: &[u8],
         poc_mem: &[u8],
         prefix: &[u8],
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
     ) -> Result<usize, String> {
-        // bfl specific
-        let mut fd = prefix.to_vec();
-        fd.extend_from_slice(poc_mem);
-        
-        if let Some(fd) = fd_lookup.get(&fd) {
-            mem.clone_from_slice(&fd[fd.len() - poc_mem.len()..])
-        } // as we may try constant FD at fuzzing, not yet added to queue ?
-        else { // should be empty or invalid FD !! 
-            return Err(format!("--> FD {fd:?} NOT FOUND at table\n{fd_lookup:?}"))
-        } // keep for now debug print, later we will kick it off once we debuged it enough :)
+        for ref mut fd in &mut self.fds {
+            if let Ok(size) = fd.load(mem, dump, poc_mem, prefix, fd_lookup) {
+                if size > 0 { // ok if one tells us it is done, then we done
+                    return Ok(size) 
+                } // in general if all Ok(0) it is OK
+            }
+        }
         Ok(0) // no any of dump memory was used
     }
 }
@@ -156,6 +152,32 @@ impl IArgLeaf for RndFd {
 
 /// must be used within FdHolder::new argument!
 impl ISerializableArg for RndFd {
+    fn load(
+        &mut self,
+        mem: &mut [u8],
+        _dump: &[u8],
+        poc_mem: &[u8],
+        prefix: &[u8],
+        fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
+    ) -> Result<usize, String> {
+        // bfl specific
+        let mut fd = prefix.to_vec();
+        fd.extend_from_slice(poc_mem);
+        
+// iterate trough all fds in case if not in lookup table, as one
+// may have transformed it ?? calling load on it should -detransform
+// rnd fd load is empy, but we can make transform not-empty load
+// and there it will resolve, if return > 1, we did and return
+// else we exec following code
+
+        if let Some(fd) = fd_lookup.get(&fd) {
+            mem.clone_from_slice(&fd[fd.len() - poc_mem.len()..])
+        } // as we may try constant FD at fuzzing, not yet added to queue ?
+        else { // should be empty or invalid FD !! 
+            return Err(format!("--> FD {fd:?} NOT FOUND at table\n{fd_lookup:?}"))
+        } // keep for now debug print, later we will kick it off once we debuged it enough :)
+        Ok(0) // no any of dump memory was used
+    }
     fn serialize(&self, _: &[u8], _: &[u8], _: &[u8]) -> Vec<SerializationInfo> {
         panic!("RndFd must be scoped whitin FdHolder argument!");
     }

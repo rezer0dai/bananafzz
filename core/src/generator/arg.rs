@@ -130,6 +130,9 @@ impl Arg {
     pub fn do_save_shared(&mut self, shared: &mut [u8]) {
         self.generator.save_shared(self.data.data(), shared);
     }
+    pub fn mem(&self) -> Vec<u8> {
+        self.generator.mem(self.data.data())
+    }
     pub fn dump(&self) -> Vec<u8> {
         self.generator.dump(self.data.data())
     }

@@ -141,7 +141,7 @@ impl Call {
     pub fn dump_mem(&self) -> Vec<u8> {
         self.args //or do .extend( in for loop
             .iter()
-            .map(|ref arg| arg.data().to_vec())
+            .map(|ref arg| arg.mem())//.data().to_vec())
             .flat_map(move |data| data)
             .collect::<Vec<u8>>()
     }

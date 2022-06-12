@@ -202,6 +202,16 @@ impl ISerializableArg for ArgComposite {
         */
     }
 
+    fn mem(&self, mem: &[u8]) -> Vec<u8> {
+        self.args
+            .iter()
+            .map(|&(off, ref arg)| {
+                arg.mem(&mem[off..off+arg.size()])
+            })
+            .flat_map(move |data| data)
+            .collect::< Vec<u8> >()
+    }
+
     fn dump(&self, mem: &[u8]) -> Vec<u8> {
         self.args
             .iter()
