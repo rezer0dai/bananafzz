@@ -157,7 +157,7 @@ impl Call {
         let mut off = 0;
         let mut off_mem = 0;
         for arg in self.args.iter_mut() {
-            let asize = arg.data().len();
+            let asize = arg.size();
             let size = arg.load(&dump[off..], &data[off_mem..][..asize], prefix, fd_lookup)?;
             off += size;
             off_mem += asize;

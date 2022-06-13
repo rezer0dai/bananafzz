@@ -14,17 +14,16 @@ pub struct Transform<F> {
 }
 impl<F> Transform<F>
 where 
-    F: Fn(&mut [u8])
+    F: Fn(&[u8]) -> Vec<u8>
 {
     pub fn new(arg: Box<dyn IArgLeaf>, transform: F) -> Self {
-        let size = arg.size();
-        Self { arg, transform, mem: vec![0u8; size] }
+        Self { arg, transform, mem: vec![] }
     }
 }
 
 impl<F> ISerializableArg for Transform<F>
 where 
-    F: Fn(&mut [u8])
+    F: Fn(&[u8]) -> Vec<u8>
 {
     fn serialize(&self, mem: &[u8], fd: &[u8], shared: &[u8]) -> Vec<SerializationInfo> {
         self.arg.serialize(mem, fd, shared)
@@ -38,15 +37,20 @@ where
         
     // we need to de-transform, at very least for fd-arg
     fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], prefix: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> Result<usize, String> {
-        let out = self.arg.load(mem, dump, data, prefix, fd_lookup);
-        (self.transform)(mem);
-        out
+        match self.arg.load(mem, dump, data, prefix, fd_lookup) {
+            Ok(size) => {
+                let data = &(self.transform)(&mem);
+                mem.clone_from_slice(&data);
+                Ok(size)
+            },
+            Err(msg) => Err(msg)
+        }
     }
 }
 
 impl<F> IArgLeaf for Transform<F>
 where 
-    F: Fn(&mut [u8])
+    F: Fn(&[u8]) -> Vec<u8>
 {
     fn size(&self) -> usize {
         self.arg.size()
@@ -57,11 +61,13 @@ where
     }
     //reading shared state
     fn generate_unsafe(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut [u8], fd: &[u8], shared: &mut[u8]) -> bool {
+        //assert!(self.size() == mem.len());
         if !self.arg.generate_unsafe(bananaq, mem, fd, shared) {
             return false
         }
-        self.mem.clone_from_slice(mem); // save data for repro
-        (self.transform)(mem);
+        self.mem = mem.to_vec(); // save data for repro
+        let data = &(self.transform)(&mem);
+        mem.clone_from_slice(&data);
         true
     }
 }

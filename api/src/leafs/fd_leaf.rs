@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 extern crate rand;
-use rand::seq::SliceRandom;
 use rand::Rng;
 
 extern crate generic;
@@ -25,6 +24,7 @@ use super::phantom_leaf::Phantom;
 pub struct FdHolder {
     size: usize,
     fds: Vec<Box<dyn IArgLeaf>>,
+    idx: usize,
 }
 impl FdHolder {
     pub fn new(size: usize, fds: Vec<Box<dyn IArgLeaf>>) -> FdHolder {
@@ -35,6 +35,7 @@ impl FdHolder {
         FdHolder {
             size: size,
             fds: fds,
+            idx: 0,
         }
     }
     pub fn dup(fd: &[u8]) -> FdHolder {
@@ -52,7 +53,16 @@ impl ISerializableArg for FdHolder {
             prefix: String::from("shared_fd(fd_") + &generic::u8_to_str(mem) + ",",
         }]
     }
-    fn dump(&self, _mem: &[u8]) -> Vec<u8> { vec![] }
+    fn mem(&self, mem: &[u8]) -> Vec<u8> {
+        self.fds[self.idx].mem(mem)
+    }
+    // TODO : it will break BFL, this is just temporary, need to update bfl plugin
+    // to forward arguments specific metadata!!
+    fn dump(&self, mem: &[u8]) -> Vec<u8> { 
+        let mut dump = self.default_dump(&self.idx.to_le_bytes());
+        dump.extend(self.fds[self.idx].dump(mem));
+        dump
+    }
     fn load(
         &mut self,
         mem: &mut [u8],
@@ -61,14 +71,19 @@ impl ISerializableArg for FdHolder {
         prefix: &[u8],
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
     ) -> Result<usize, String> {
-        for ref mut fd in &mut self.fds {
-            if let Ok(size) = fd.load(mem, dump, poc_mem, prefix, fd_lookup) {
-                if size > 0 { // ok if one tells us it is done, then we done
-                    return Ok(size) 
-                } // in general if all Ok(0) it is OK
-            }
+
+        let mut idx = [0u8; 8];
+        let n_loaded = self.default_load(&mut idx, dump, &dump[..8]);
+        if idx.len() * 2 != n_loaded {
+            panic!(format!("wrong size data : {dump:?} --> {:?}", self.default_load(&mut idx, dump, &dump[8..])))
         }
-        Ok(0) // no any of dump memory was used
+        self.idx = usize::from_le_bytes(idx);
+
+        assert!(self.idx < self.fds.len());
+
+        self.fds[self.idx].load(
+            mem, &dump[n_loaded..], poc_mem, prefix, fd_lookup)
+            .map(|size| size + n_loaded)
     }
 }
 impl IArgLeaf for FdHolder {
@@ -87,10 +102,8 @@ impl IArgLeaf for FdHolder {
         fd: &[u8],
         shared: &mut[u8],
     ) -> bool {
-        self.fds
-            .choose_mut(&mut rand::thread_rng())
-            .unwrap()
-            .generate(bananaq, mem, fd, shared)
+        self.idx = rand::thread_rng().gen_range(0..self.fds.len());
+        self.fds[self.idx].generate(bananaq, mem, fd, shared)
     }
 }
 
@@ -129,9 +142,9 @@ impl IArgLeaf for RndFd {
             _ => {
                 mem.clone_from_slice(&Fd::dummy(self.size()).data());
 
-                let fd = match bananaq::get_rnd_fd(bananaq, self.sid.clone(), self.size) {
-                    Ok(fd) => fd,
-                    Err(_) => return false,
+                let fd = match bananaq::get_rnd_fd(bananaq, self.sid.clone()) {
+                    Ok(Some((fd, _))) => fd,
+                    _ => return false,
                 };
 
                 if fd.data().iter().take(8).all(|&b| 0 == b) {
@@ -152,6 +165,7 @@ impl IArgLeaf for RndFd {
 
 /// must be used within FdHolder::new argument!
 impl ISerializableArg for RndFd {
+    fn dump(&self, mem: &[u8]) -> Vec<u8> { vec![] }
     fn load(
         &mut self,
         mem: &mut [u8],

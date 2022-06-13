@@ -150,14 +150,13 @@ impl FuzzyQ {
 
     /// certain calls want to intercorporate foreign state
     ///
-    /// therefore we choose randomly from our queue ( based on criteria of caller )
-    pub fn get_rnd_fd(&self, id: StateTableId, size: usize) -> Fd {
+    /// therefore we choose randomly from our queue ( based on criteria of caller ) 
+    pub fn get_rnd_fd(&self, id: StateTableId) -> Option<(Fd, StateTableId)> {
         assert!(
             0 != self.states.len(),
             "[bananafzz] get_rnd_safe queried while no state in queue, possible ?"
         );
-        match self
-            .states
+        self.states
             .iter()
             // OK we will filter only full covered IDs ( avoid partially & )
             .filter(|info| id.do_match(&info.1.id)//.do_match(&id)
@@ -167,10 +166,7 @@ impl FuzzyQ {
             //.inspect(|info| println!(".............{:?} -> {:X}", id, info.1.fd))
             .collect::<Vec<_>>()
             .choose(&mut rand::thread_rng())
-        {
-            Some(info) => info.1.fd.clone(),
-            None => Fd::empty(size),
-        }
+            .map(|info| (info.1.fd.clone(), info.1.id))
     }
 
     /// call callback

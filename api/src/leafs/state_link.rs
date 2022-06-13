@@ -27,7 +27,12 @@ impl<F> ISerializableArg for StateLink<F> {
     fn serialize(&self, mem: &[u8], fd: &[u8], shared: &[u8]) -> Vec<SerializationInfo> {
         self.arg.serialize(mem, fd, shared)
     }
-    fn dump(&self, mem: &[u8]) -> Vec<u8> { self.arg.dump(mem) }
+    fn mem(&self, mem: &[u8]) -> Vec<u8> {
+        self.arg.mem(mem)
+    }
+    fn dump(&self, mem: &[u8]) -> Vec<u8> { 
+        self.arg.dump(mem) 
+    }
     fn load(
         &mut self,
         mem: &mut [u8],

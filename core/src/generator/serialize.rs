@@ -38,6 +38,9 @@ pub trait ISerializableArg {
 
     // dump is easy as even in ptr in argument we just fold those data
     fn dump(&self, mem: &[u8]) -> Vec<u8> {
+        self.default_dump(mem)
+    }    
+    fn default_dump(&self, mem: &[u8]) -> Vec<u8> {
         if 0 == mem.len() {
             return vec![]
         }
@@ -57,7 +60,8 @@ pub trait ISerializableArg {
         let size_size = std::mem::size_of::<usize>();
 
         let size: usize = *generic::data_const_unsafe(dump);
-        assert!(size == mem.len(), "[BFL] loading dumped data to arg goes wrong [{:X} != {:X}] aka {:X}", size, mem.len() + size_size, dump.len());
+        assert!(size == mem.len(), "[BFL] loading dumped data to arg goes wrong [{:X} != {:X}] aka {:X} with {:?}", 
+            size, mem.len() + size_size, dump.len(), dump);
         assert!(mem.len() == data.len());
 
         mem.copy_from_slice(&dump[size_size..][..data.len()]);

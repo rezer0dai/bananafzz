@@ -137,10 +137,9 @@ pub fn ctor_notify<'a>(info: StateInfo) -> bool {
 }
 pub fn get_rnd_fd(
     banana: &Weak<FuzzyQ>,
-    id: StateTableId,
-    size: usize,
-) -> Result<Fd, &'static str> {
-    read_prot(banana, |banana| banana.get_rnd_fd(id.de_horn(), size))
+    id: StateTableId
+) -> Result<Option<(Fd, StateTableId)>, &'static str> {
+    read_prot(banana, |banana| banana.get_rnd_fd(id.de_horn()))
 }
 pub fn is_active(bananaq: &Weak<FuzzyQ>) -> Result<bool, &'static str> {
     read_prot(bananaq, |banana| banana.active())

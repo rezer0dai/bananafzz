@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 extern crate core;
 use self::core::banana::bananaq::FuzzyQ;
 use self::core::generator::leaf::IArgLeaf;
@@ -54,21 +56,38 @@ pub struct SharedWrite {
 }
 
 impl SharedWrite {
-    pub fn new(arg: Box<dyn IArgLeaf>) -> Bfl<SharedWrite> {
-        Bfl::new(SharedWrite {
+    pub fn new(arg: Box<dyn IArgLeaf>) -> SharedWrite {
+        SharedWrite {
             arg: arg,
             offset: 0,
-        })
+        }
     }
-    pub fn partial(offset: usize, arg: Box<dyn IArgLeaf>) -> Bfl<SharedWrite> {
-        Bfl::new(SharedWrite {
+    pub fn partial(offset: usize, arg: Box<dyn IArgLeaf>) -> SharedWrite {
+        SharedWrite {
             arg: arg,
             offset: offset,
-        })
+        }
     }
 }
 
-impl ISerializableArg for SharedWrite { }
+impl ISerializableArg for SharedWrite {
+    fn mem(&self, mem: &[u8]) -> Vec<u8> {
+        self.arg.mem(mem)
+    }
+    fn dump(&self, mem: &[u8]) -> Vec<u8> { 
+        self.arg.dump(mem) 
+    }
+    fn load(
+        &mut self,
+        mem: &mut [u8],
+        dump: &[u8],
+        poc_fd: &[u8],
+        prefix: &[u8], 
+        fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
+    ) -> Result<usize, String> {
+        self.arg.load(mem, dump, poc_fd, prefix, fd_lookup)
+    }
+}
 
 impl IArgLeaf for SharedWrite {
     fn size(&self) -> usize {

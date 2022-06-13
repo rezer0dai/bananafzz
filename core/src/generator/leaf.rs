@@ -59,7 +59,7 @@ pub trait IArgLeaf : ISerializableArg {
 
     /// wrapping GenerateImpl per Argument, to check slice length corectness!
     fn generate(&mut self, bananaq: &Weak<FuzzyQ>, mem: &mut[u8], fd: &[u8], shared: &mut[u8]) -> bool {
-        if mem.len() != self.size() {
+        if mem.len() < self.size() {
             panic!("trying to generate Argument with wrong size {} -> {} vs {}", self.name(), mem.len(), self.size());
         }
         self.generate_unsafe(bananaq, mem, fd, shared)

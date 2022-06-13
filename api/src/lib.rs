@@ -31,7 +31,7 @@ pub use leafs::transform::Transform;
 
 #[macro_export]
 macro_rules! transform {
-    ($iarg:expr, $transform:expr) => {
+    ($transform:expr, $iarg:expr) => {
         api::Transform::new(Box::new($iarg), $transform)
     };
 }

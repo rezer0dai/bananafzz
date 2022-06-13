@@ -158,7 +158,7 @@ impl Arg {
             );
         }
         assert!(mem::size_of::<T>() <= self.data.len());
-        let val = unsafe { ::std::slice::from_raw_parts_mut(self.data.as_ptr_mut() as *mut T, 1) };
+        let val = unsafe { ::std::slice::from_raw_parts_mut(self.data_mut().as_ptr() as *mut T, 1) };
         &mut val[0]
     }
     pub fn data_const_unsafe<T>(&self) -> &T {
@@ -171,7 +171,7 @@ impl Arg {
             );
         }
         assert!(mem::size_of::<T>() <= self.data.len());
-        let val = unsafe { ::std::slice::from_raw_parts(self.data.as_ptr() as *const T, 1) };
+        let val = unsafe { ::std::slice::from_raw_parts(self.data().as_ptr() as *const T, 1) };
         &val[0]
     }
 }

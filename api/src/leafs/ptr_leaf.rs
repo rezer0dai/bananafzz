@@ -36,6 +36,11 @@ impl ISerializableArg for Ptr {
             prefix: String::from("ArgPtr(") + &self.arg.do_serialize(fd, shared) + ", ",
         }]
     }
+
+    fn mem(&self, _mem: &[u8]) -> Vec<u8> {
+        self.arg.mem()
+    }
+
     fn dump(&self, _mem: &[u8]) -> Vec<u8> {
         self.arg.dump()
     }

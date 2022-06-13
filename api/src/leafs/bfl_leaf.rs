@@ -27,6 +27,11 @@ impl<T> ISerializableArg for Bfl<T>
     fn serialize(&self, mem: &[u8], fd: &[u8], shared: &[u8]) -> Vec<SerializationInfo> {
         self.leaf.serialize(mem, fd, shared)
     }
+    
+    fn mem(&self, mem: &[u8]) -> Vec<u8> {
+        self.leaf.mem(mem)
+    }
+    
     fn dump(&self, _mem: &[u8]) -> Vec<u8> { vec![] }
     fn load(&mut self, mem: &mut[u8], _dump: &[u8], data: &[u8], _prefix: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> Result<usize, String> { 
         mem.clone_from_slice(data);
