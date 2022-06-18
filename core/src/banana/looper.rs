@@ -59,14 +59,12 @@ impl FuzzyState {
                 ));
             }
 
-            trace!("try to upgrade : {}", u64::from(istate.state().id()));
             let mut fuzzy_state = FuzzyState::new(
                 banana
                     .upgrade()
                     .ok_or(format!("[bananaq] bananaq#? is no longer"))?,
                 istate,
             );
-            trace!("OK upgraded cont : {}", u64::from(fuzzy_state.istate.state().id()));
 
             if let Err(e) = fuzzy_state.init() {
                 let uid = thread::current().id();
