@@ -1,5 +1,5 @@
 extern crate log;
-use self::log::{info, debug};
+use self::log::*;
 
 use super::bananaq::{self, FuzzyQ};
 use state::state::IFuzzyObj;
@@ -59,20 +59,26 @@ impl FuzzyState {
                 ));
             }
 
+            trace!("try to upgrade : {}", u64::from(istate.state().id()));
             let mut fuzzy_state = FuzzyState::new(
                 banana
                     .upgrade()
                     .ok_or(format!("[bananaq] bananaq#? is no longer"))?,
                 istate,
             );
+            trace!("OK upgraded cont : {}", u64::from(fuzzy_state.istate.state().id()));
 
             if let Err(e) = fuzzy_state.init() {
+                let uid = thread::current().id();
+                let uid = u64::from(uid.as_u64());
+                warn!("init failed : {}-{uid}", u64::from(fuzzy_state.istate.state().id()));
                 return Err(format!(
                     "[bananaq] FuzzyState {} failed to init with message <{}>",
                     fuzzy_state.istate.state().info().name,
                     e
                 ));
             }
+            debug!("init OK : {}", u64::from(fuzzy_state.istate.state().id()));
             if !bananaq::ctor_notify(fuzzy_state.istate.state().info()) {
                 return Err(format!(
                     "[bananaq] FuzzyState {} <uid:{:?}> failed to register to queue",
@@ -111,6 +117,9 @@ impl FuzzyState {
     /// try to create state by invoking fuzz_init until is craeted ( level != 0 ) or further fuzzing is
     /// denied
     fn init(&mut self) -> Result<(), String> {
+        let uid = thread::current().id();
+        let uid = u64::from(uid.as_u64());
+        debug!("try to init : {:X} ({uid})", u64::from(self.istate.state().id()));
         while 0 == self.istate.state().level() || !self.istate.is_online() {
             self.istate.fuzzy_init()?;
         }

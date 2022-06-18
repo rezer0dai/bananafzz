@@ -235,7 +235,7 @@ impl FuzzyQ {
         for obs in self.observers_state.iter() {
             obs.notify_dtor(info);
         }
-log::trace!("dtor tid:{uid}");
+debug!("dtor tid:{uid} :: {}", info.name);
         //self.wake_up(WantedMask::default(), 0);
     }
     /// state creation callback
@@ -253,6 +253,7 @@ log::trace!("dtor tid:{uid}");
             })
             .count();
         if dups > self.cfg.max_racers_count {
+warn!("racers shuted down {:X}", u64::from(info.id));
             return false;
         }
         self.observers_state
@@ -266,9 +267,13 @@ log::trace!("dtor tid:{uid}");
             return false;
         }
         if self.states.len() > self.cfg.max_queue_size {
-debug!("QUEUE is FULL, denying entry of {:?} -- {}", fuzzy_info.id, fuzzy_info.name);
+debug!("QUEUE is FULL, denying entry of {:X} -- {}", u64::from(fuzzy_info.id), fuzzy_info.name);
             return false; //0 != same_kind
         }
+
+        let uid = thread::current().id();
+        let uid = u64::from(uid.as_u64());
+
         let same_kind = self
             .states
             .iter()
@@ -303,18 +308,17 @@ debug!("QUEUE is FULL, denying entry of {:?} -- {}", fuzzy_info.id, fuzzy_info.n
                 warn!("UNICORN DENY: {}", fuzzy_info.name);
                 return false }
         } else if same_kind * self.cfg.ratio > self.cfg.max_queue_size * 1 {
-trace!("QUEUE is overpopulated of same kind, denying entry of {:?}", fuzzy_info.id);
+warn!("QUEUE is overpopulated of same kind, [{}]({uid}) denying entry of {:X}/{:X} [same#{same_kind}", fuzzy_info.name, u64::from(fuzzy_info.id), u64::from(fuzzy_info.id.core_flags()));
             return false;
         }
 
-        let uid = thread::current().id();
-        let uid = u64::from(uid.as_u64());
         if self.states.contains_key(&uid) {
             panic!(
                 "trying to insert from same thread twice++ -> {}",
                 fuzzy_info.name
             );
         }
+debug!("[{}]::({uid}) allowing entry of {:X}/{:X} [same#{same_kind}", fuzzy_info.name, u64::from(fuzzy_info.id), u64::from(fuzzy_info.id.core_flags()));
 
         self.states.insert(uid, fuzzy_info);
         true

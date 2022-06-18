@@ -75,7 +75,7 @@ impl ISerializableArg for FdHolder {
         let mut idx = [0u8; 8];
         let n_loaded = self.default_load(&mut idx, dump, &dump[..8]);
         if idx.len() * 2 != n_loaded {
-            panic!(format!("wrong size data : {dump:?} --> {:?}", self.default_load(&mut idx, dump, &dump[8..])))
+            panic!("wrong size data : {dump:?} --> {:?}", self.default_load(&mut idx, dump, &dump[8..]))
         }
         self.idx = usize::from_le_bytes(idx);
 
@@ -165,7 +165,7 @@ impl IArgLeaf for RndFd {
 
 /// must be used within FdHolder::new argument!
 impl ISerializableArg for RndFd {
-    fn dump(&self, mem: &[u8]) -> Vec<u8> { vec![] }
+    fn dump(&self, _mem: &[u8]) -> Vec<u8> { vec![] }
     fn load(
         &mut self,
         mem: &mut [u8],

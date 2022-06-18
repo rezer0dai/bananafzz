@@ -21,7 +21,6 @@ impl StateTableId {
         }
     }
     pub fn racer(&self) -> Self {
-        assert!(false);
         match self {
             StateTableId::Id(id) => StateTableId::Id(id | 2)
         }
