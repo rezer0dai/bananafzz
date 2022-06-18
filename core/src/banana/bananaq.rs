@@ -144,6 +144,12 @@ pub fn get_rnd_fd(
 pub fn is_active(bananaq: &Weak<FuzzyQ>) -> Result<bool, &'static str> {
     read_prot(bananaq, |banana| banana.active())
 }
+pub fn start(bananaq: &Weak<FuzzyQ>) -> Result<(), &'static str> {
+    write_prot(bananaq, |banana| banana.start())
+}
+pub fn started(bananaq: &Weak<FuzzyQ>) -> Result<bool, &'static str> {
+    read_prot(bananaq, |banana| banana.started())
+}
 pub fn config(bananaq: &Weak<FuzzyQ>) -> Result<FuzzyConfig, &'static str> {
     read_prot(bananaq, |banana| banana.cfg.clone())
 }

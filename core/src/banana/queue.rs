@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc, sync::{Arc, Condvar, Mutex, RwLock}, thread};
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use log::{debug, trace, warn};
 
@@ -34,6 +34,7 @@ pub struct FuzzyQ {
     qid: u64,
     timestamp: AtomicU64,
 
+    started: AtomicBool,
     active: Rc<RwLock<bool>>,
 
     wanted: Arc<(Mutex<WantedMask>, Condvar)>,
@@ -47,7 +48,7 @@ unsafe impl Send for FuzzyQ {}
 unsafe impl Sync for FuzzyQ {}
 
 impl FuzzyQ {
-    pub fn new(config: FuzzyConfig) -> FuzzyQ {
+    pub fn new(config: FuzzyConfig, start: bool) -> FuzzyQ {
         FuzzyQ {
             cfg: config,
 
@@ -56,11 +57,19 @@ impl FuzzyQ {
 
             wanted: Arc::new((Mutex::new(WantedMask::default()), Condvar::new())),
             timestamp: AtomicU64::new(clock_ticks::precise_time_ms()),
+            started: AtomicBool::new(start),
 
             states: HashMap::new(),
             observers_state: Vec::new(),
             observers_call: Vec::new(),
         }
+    }
+
+    pub fn start(&mut self) {
+        self.started.store(true, Ordering::SeqCst)
+    }
+    pub fn started(&self) -> bool {
+        self.started.load(Ordering::SeqCst)
     }
 
     pub(crate) fn wait_for(

@@ -44,6 +44,10 @@ impl FuzzyState {
         Ok(thread::spawn(move || {
             let banana = istate.state().info().bananaq();
 
+            while !bananaq::started(&banana)? {
+                thread::yield_now()
+            }
+
             if !bananaq::push(&banana, &istate)? {
                 return Err(format!(
                     "[bananaq] failed to push {}",
