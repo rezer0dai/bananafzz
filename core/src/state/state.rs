@@ -135,6 +135,7 @@ impl State {
     pub fn id(&self) -> StateTableId { self.info.id.clone() }
 
     pub fn info(&self) -> StateInfo { self.info.clone() }
+    pub fn limit(&self) -> usize { self.limit }
 
     pub fn fd(&self) -> &Fd { &self.info.fd }
     pub fn level(&self) -> usize { self.ccache.0 }

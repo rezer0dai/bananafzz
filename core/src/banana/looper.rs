@@ -63,6 +63,13 @@ impl FuzzyState {
                 ));
             }
 
+            while racer && 0 == istate.state().limit() &&  bananaq::is_active(&banana)? {
+                thread::sleep(time::Duration::from_millis(
+                    rand::thread_rng()
+                        .gen_range(0..=bananaq::config(&banana)?.push_sleep),
+                ));
+            }
+
             let mut fuzzy_state = FuzzyState::new(
                 banana
                     .upgrade()
