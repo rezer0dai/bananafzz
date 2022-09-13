@@ -216,7 +216,7 @@ debug!("uid : {:?} x {:?} \n\t FULL UID MAP {:?}", state.uid(), poc.info.uid, se
 
         if state.level != poc.info.level {
 
-error!("[bfl] object:{:X}=={} WRONG #levels {:?} stop or force in bananaq#{:X}", poc.info.sid, poc.info.sid, (state.level, poc.info.level), bananaq::qid(&state.bananaq).unwrap());
+error!("[bfl] object:{:X}=={} WRONG #levels {:?} <cid: {:?} ; name = {:?}> stop or force in bananaq#{:X}", poc.info.sid, poc.info.sid, (state.level, poc.info.level), poc.info.cid, state.name, bananaq::qid(&state.bananaq).unwrap());
 
             return self.stop_or_force(
                 call_attempts!(call, state, self.n_attempts, poc), 
@@ -239,9 +239,9 @@ debug!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).un
 
             return self.stop_or_force(call_attempts!(call, state, self.n_attempts, poc), 1.0)//try add something
         }
-
+println!(".............start to load arg");
         if let Err(msg) = call.load_args(&poc.dmp, &poc.mem, &Self::sid_prefix(poc.info.sid), &self.fid_lookup) {
-error!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name());
+panic!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name());
             return false
         }
 
@@ -262,7 +262,10 @@ trace!("**************** we follow {}", call.name());
         true
     }
     fn aftermath_repro(&mut self, state: &StateInfo, call: &mut Call) {
-trace!("APPROVED");
+trace!("APPROVED -> {:?}", state.fd.data());
+// we now hard assuming all repro calls must be sucessfull beforehand!!
+//assert!(call.ok() || state.level != self.level, format!("#{:?}: call {:?} FAILED!!", self.poc_ind, call.name()));
+info!("#{:?}: call {:?} SUCKSES!!", self.poc_ind, call.name());
         // we need to do per AFL fuzz_one, to keep state info up to data
         // how we do it ? AFL forward us *CONST data, we transmute to *MUT ..
         // ok for InMemory fuzzing, for LibAFL Fork it will not work...
@@ -293,10 +296,7 @@ warn!("[BFL] Overlapping fid at runtime: {:?} != {:?}\n\t=> {:?}",
         return false;
     }
     fn notify_ctor_locked_repro(&mut self, state: &StateInfo) -> bool {
-trace!("APPROVED-CTOR");
-        if 0 == state.total {
-            return true // dupped
-        }
+trace!("APPROVED-CTOR -> {:?}", state.fd.data());
 
         if !self.verify_ctor(state) {
             return false
@@ -352,13 +352,16 @@ trace!("........OK WE DUMPING A CALL!!! {:?}", state.uid());
         self.fuzzy_uid = 0;
         let call_data: Vec<u8> = self.call_data.drain(..).collect();
 
+// TODO: OK THIS IS ON THE EDGE, allows hacker to specify failing calls
+// to go to next level ( usefull sometimes when you just want to try call )
+// but may hinder repro efforts, need to properly eval if THIS IS OK or NOT ?
         if !call.ok() && state.level == self.level {
 trace!("FUZZY CAIL SOLY-SUCKS");
 //seems garbage call, skip from BFL ~ well this is for SOLY, no good for general code cov..
             return
         }
 
-trace!("OK AFTERMATHEREEEEEEEEEEEED");
+info!("OK AFTERMATH CALL GOODIE : #{:?}: {:?}", self.poc_ind, call.name());
 
         assert!(self.poc.do_gen() || self.poc.is_last_call(self.poc_ind));
 
@@ -455,6 +458,12 @@ error!("STOP5 {:?} / {:?}", (self.poc_ind, self.poc.max_ind()), self.poc.info.ca
 trace!("NEW OBJECT!!! {:?} + {:?}", state.id, state.fd.data());
 
         if 0 == state.total {
+
+            let _ = self.resolve_fid(
+                66,
+                state.fd.data(),
+                state.fd.data());
+
             return true // racers always to be approved
         }
         self.passed = 0;

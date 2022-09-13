@@ -80,7 +80,7 @@ impl ISerializableArg for FdHolder {
         self.idx = usize::from_le_bytes(idx);
 
         assert!(self.idx < self.fds.len());
-
+println!("LOADING FD -> {:?}", poc_mem);
         self.fds[self.idx].load(
             mem, &dump[n_loaded..], poc_mem, prefix, fd_lookup)
             .map(|size| size + n_loaded)
@@ -185,12 +185,16 @@ impl ISerializableArg for RndFd {
 // else we exec following code
 
         if let Some(fd) = fd_lookup.get(&fd) {
-            mem.clone_from_slice(&fd[fd.len() - poc_mem.len()..])
+            mem.clone_from_slice(&fd[fd.len() - poc_mem.len()..][..mem.len()]);
+            return Ok(0)
         } // as we may try constant FD at fuzzing, not yet added to queue ?
-        else { // should be empty or invalid FD !! 
-            return Err(format!("--> FD {fd:?} NOT FOUND at table\n{fd_lookup:?}"))
-        } // keep for now debug print, later we will kick it off once we debuged it enough :)
-        Ok(0) // no any of dump memory was used
+        for full_fd in fd_lookup.keys() {
+            // ok we allowing matching part of fd
+            if full_fd[..fd.len()].eq(&fd) {
+                return self.load(mem, _dump, &full_fd[prefix.len()..], prefix, fd_lookup)
+            }
+        }
+        return Err(format!("--> FD {fd:?} NOT FOUND at table\n{fd_lookup:?}"))
     }
     fn serialize(&self, _: &[u8], _: &[u8], _: &[u8]) -> Vec<SerializationInfo> {
         panic!("RndFd must be scoped whitin FdHolder argument!");

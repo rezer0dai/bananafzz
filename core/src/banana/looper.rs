@@ -21,8 +21,13 @@ pub struct FuzzyState {
 /// RAII guard
 impl Drop for FuzzyState {
     fn drop(&mut self) {
+        info!(
+            "[fuzzing] drop of {} :: {:?}",
+            self.istate.state().info().name,
+            self.istate.state().info().fd.data(),
+        );
         if let Err(e) = bananaq::dtor(&self.banana) {
-            debug!(
+            info!(
                 "[fuzzing] delayloaded drop of {} for bananaq#{:X} <{e}>",
                 self.istate.state().info().name,
                 self.qid
@@ -63,13 +68,6 @@ impl FuzzyState {
                 ));
             }
 
-            while racer && 0 == istate.state().limit() &&  bananaq::is_active(&banana)? {
-                thread::sleep(time::Duration::from_millis(
-                    rand::thread_rng()
-                        .gen_range(0..=bananaq::config(&banana)?.push_sleep),
-                ));
-            }
-
             let mut fuzzy_state = FuzzyState::new(
                 banana
                     .upgrade()
@@ -87,12 +85,19 @@ impl FuzzyState {
                     e
                 ));
             }
-            debug!("init OK : {}", u64::from(fuzzy_state.istate.state().id()));
+            info!("init OK : {}", u64::from(fuzzy_state.istate.state().id()));
             if !bananaq::ctor_notify(fuzzy_state.istate.state().info()) {
                 return Err(format!(
                     "[bananaq] FuzzyState {} <uid:{:?}> failed to register to queue",
                     fuzzy_state.istate.state().info().name,
                     fuzzy_state.istate.state().info().uid()
+                ));
+            }
+
+            while racer && 0 == fuzzy_state.istate.state().limit() && bananaq::is_active(&banana)? {
+                thread::sleep(time::Duration::from_millis(
+                    rand::thread_rng()
+                        .gen_range(0..=bananaq::config(&banana)?.push_sleep),
                 ));
             }
 
