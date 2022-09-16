@@ -1,10 +1,13 @@
+extern crate rand;
+use rand::Rng;
+
+use std::sync::Weak;
 use std::collections::HashMap;
 
 use generator::arg::Arg;
 
 use super::super::banana::bananaq;
 use super::super::banana::bananaq::FuzzyQ;
-use std::sync::Weak;
 
 use super::fd_info::CallInfo;
 use super::id::CallTableId;
@@ -153,12 +156,20 @@ impl Call {
             .collect::<Vec<u8>>()
     }
 
-    pub fn load_args<'a>(&mut self, dump: &[u8], data: &[u8], prefix: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> Result<(), String> {
+    pub fn load_args<'a>(
+        &mut self,
+        dump: &[u8],
+        data: &[u8],
+        prefix: &[u8],
+        fd_lookup: &HashMap<Vec<u8>,Vec<u8>>,
+        data_load_freedom_ratio: f64
+        ) -> Result<(), String> {
         let mut off = 0;
         let mut off_mem = 0;
         for arg in self.args.iter_mut() {
+            let data_load = rand::thread_rng().gen_bool(data_load_freedom_ratio);
             let asize = arg.size();
-            let size = arg.load(&dump[off..], &data[off_mem..][..asize], prefix, fd_lookup)?;
+            let size = arg.load(&dump[off..], &data[off_mem..][..asize], prefix, fd_lookup, data_load)?;
             off += size;
             off_mem += asize;
         }

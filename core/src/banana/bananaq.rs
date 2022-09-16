@@ -171,6 +171,10 @@ pub fn stop(banana: &Weak<FuzzyQ>) -> Result<(), &'static str> {
     read_prot(&banana, |banana| banana.stop())
 }
 
+pub fn finish(banana: &Weak<FuzzyQ>) -> Result<(), &'static str> {
+    read_prot(&banana, |banana| banana.finish())
+}
+
 pub fn len(bananaq: &Weak<FuzzyQ>) -> Result<usize, &'static str> {
     read_prot(bananaq, |banana| banana.len())
 }

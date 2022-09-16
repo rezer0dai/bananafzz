@@ -28,24 +28,10 @@ impl Syncer {
                         Ordering::SeqCst,
                         Ordering::SeqCst,
                     );
-
-        let _ = self.wanted.insert(mask);
     }
 
     fn notify(&mut self, state: &StateInfo, call: &mut Call) -> Result<bool, WantedMask> {
         log::trace!("syncer");
-        if self.wanted.is_some() {
-            if let Some(ref mask) = self.wanted {
-                if 0 != mask.uid && state.uid() != mask.uid {
-                    return Err(mask.clone())
-                }
-                if 0 != mask.sid && 0 == u64::from(state.id) & mask.sid {
-                    return Err(mask.clone())
-                }
-                log::trace!("APPROVED : {mask:?} :: {:?} {:?} | uid: {:?}", state.id, call.id(), state.uid());
-            }
-            self.wanted = None;
-        }
         
         let uid = self.wildcard.compare_exchange(
             0,
@@ -119,6 +105,8 @@ impl Syncer {
             wanted: None,
         }
     }
+
+    fn stop(&mut self) { }
 }
 
 common::callback_proxy!(Syncer);

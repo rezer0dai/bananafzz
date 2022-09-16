@@ -32,17 +32,6 @@ impl Mediator {
         if !self.stats.contains_key(&sid) {
             self.stats.insert(sid, 0);
         }
-        if self.wanted.is_some() {
-            if let Some(ref mask) = self.wanted {
-                if 0 != mask.uid && state.uid() != mask.uid {
-                    return Err(mask.clone())
-                }
-                if 0 != mask.sid && 0 == u64::from(state.id) & mask.sid {
-                    return Err(mask.clone())
-                }
-            }
-            self.wanted = None;
-        }
 
         if self.notify_impl(&u64::from(state.id)).unwrap_or(true) {
             return Ok(true)
@@ -92,9 +81,8 @@ impl Mediator {
         true
     }
     pub fn dtor(&mut self, _state: &StateInfo) { }
-    pub fn revert(&mut self, _info: &StateInfo, _call: &Call, mask: WantedMask) { 
-        let _ = self.wanted.insert(mask);
-    }
+    pub fn revert(&mut self, _info: &StateInfo, _call: &Call, mask: WantedMask) { }
+    pub fn stop(&mut self) { }
 }
 
 common::callback_proxy!(Mediator);

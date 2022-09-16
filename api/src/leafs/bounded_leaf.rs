@@ -50,8 +50,8 @@ impl<T> Bounded<T>
 
 impl<T: Copy + PartialOrd + SampleUniform + Debug + Add<Output = T> + Sub<Output = T> + Rem<Output = T>> ISerializableArg for Bounded<T>
 {
-    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], _prefix: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> Result<usize, String> {
-        let size = self.default_load(mem, dump, data);
+    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], _prefix: &[u8], _fd_lookup: &HashMap<Vec<u8>,Vec<u8>>, data_load: bool) -> Result<usize, String> {
+        let size = self.default_load(mem, dump, data, data_load);
         if !rand::thread_rng().gen_bool(self.afl_fix_ratio) {
             return Ok(size)
         }

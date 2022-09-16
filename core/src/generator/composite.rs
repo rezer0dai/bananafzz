@@ -221,13 +221,13 @@ impl ISerializableArg for ArgComposite {
             .flat_map(move |data| data)
             .collect::< Vec<u8> >()
     }
-    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], prefix: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> Result<usize, String> {
+    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], prefix: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>, data_load: bool) -> Result<usize, String> {
         let mut off_d = 0;
         for &mut (off, ref mut arg) in self.args.iter_mut() {
             let asize = arg.size();
 
             let size = arg.load(&mut mem[off..][..asize], 
-                &dump[off_d..], &data[off..][..asize], prefix, fd_lookup)?;
+                &dump[off_d..], &data[off..][..asize], prefix, fd_lookup, data_load)?;
 
             off_d += size;
         }

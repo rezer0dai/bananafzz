@@ -50,6 +50,8 @@ pub trait ICallObserver {
     fn aftermath(&self, _info: &StateInfo, _call: &mut Call) { }
     /// if some other module in stack after, denied call
     fn revert(&self, _info: &StateInfo, _call: &Call, _mask: WantedMask) { }
+
+    fn stop(&self) { }
 }
 /// (pre) callback per state creation
 ///

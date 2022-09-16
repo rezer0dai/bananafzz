@@ -34,6 +34,7 @@ pub struct PocData {
     block: Vec<usize>,
 
     do_gen: bool,
+    shared: bool,
     //    calls2: Vec<Vec<u8>>,
     //    descs2: Vec<PocCallDescription>,
 }
@@ -79,6 +80,7 @@ impl PocData {
                 added: 0,
                 block: vec![],
                 do_gen: !0 != info.insert_ind,
+                shared: false,
                 //                calls2: vec![],
                 //                descs2: vec![],
             };
@@ -87,16 +89,18 @@ impl PocData {
             poc
         };
 
-        info!(
-            "NEW POC : {:?}",
-            (poc.do_gen, poc.inserted, poc.info.insert_ind)
-        );
+        if poc.do_gen {
+            info!(
+                "NEW POC : {:?}",
+                (poc.do_gen, poc.inserted, poc.info.insert_ind)
+            );
 
-        for i in 0..poc.info.calls_count {
-            let desc = poc.desc_data(i);
-            info!("? [{i}] Call : {:?}", desc);
-            let head = generic::data_const_unsafe::<PocCallHeader>(&shmem.data()[desc.offset..]);
-            info!("\n\t?> Header : {:?}", head);
+            for i in 0..poc.info.calls_count {
+                let desc = poc.desc_data(i);
+                info!("? [{i}] Call : {:?}", desc);
+                let head = generic::data_const_unsafe::<PocCallHeader>(&shmem.data()[desc.offset..]);
+                info!("\n\t?> Header : {:?}", head);
+            }
         }
 
         poc
@@ -304,9 +308,13 @@ impl PocData {
             /***************/
             return false; // insert in between and continue until end of repro
         }
+        if self.shared {
+            return true
+        }
         self.info.magic = self.magic;
         if self.upload_poc(addr) {
             info!("UPLOADED!! -> {:?}", self.do_gen);
+            self.shared = true;
             unsafe { REPROED = true } //temporary
         } else {
             info!("UPLOAD FAILED");

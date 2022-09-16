@@ -36,7 +36,8 @@ fn find_target(pid: u64, xids: &Vec<Xid>, call: &PocCallHeader) -> Result<Xid, (
     //    return Err(())
 
     // seems it is DUP by default, maybe force to disable this option in bananafzz
-    Ok(Xid::new(pid, call.uid, call.sid, 1 + xids.len() as u64))
+    //Ok(Xid::new(pid, call.uid, call.sid, 1 + xids.len() as u64))
+    Err(())//"No object to related to found!")
 }
 
 fn resolve_xid(pid: u64, xids: &mut Vec<Xid>, call: &PocCallHeader) -> Result<(), ()> {
@@ -110,6 +111,48 @@ pub fn do_bananized_crossover(poc_a: &mut [u8], poc_b: &mut [u8], cross_count: u
     for i in split_at..poc_a.header().calls_count {
         if let Ok(call) = adjust_sid(0, &mut xids, poc_a.call(i)) {
             poc_o.append(&call, poc_a.desc(i).kin);
+        }
+    }
+
+    poc_o.craft_poc()
+}
+
+pub fn trim_poc(poc: &[u8], calls_count: usize) -> Vec<u8> {
+    let cc = generic::data_const_unsafe::<PocDataHeader>(&poc).calls_count;
+    //assert!(cc + 1 >= calls_count);
+    let calls_count = if cc < calls_count {
+        cc // we stoped fuzzing queue, but plugin after us register that call
+    } else { calls_count };
+
+    let magic = generic::data_const_unsafe::<PocDataHeader>(poc).magic;
+    let poc = unsafe { PocData::new(magic, std::mem::transmute(poc.as_ptr())) };
+
+    let mut poc_o = PocData::new(magic, 0);
+
+    let mut xids = vec![];
+    for i in 0..calls_count {
+        if let Ok(call) = adjust_sid(0, &mut xids, poc.call(i)) {
+            poc_o.append(&call, poc.desc(i).kin);
+        }
+    }
+
+    poc_o.craft_poc()
+}
+
+pub fn skip(poc: &[u8], index: usize) -> Vec<u8> {
+    let cc = generic::data_const_unsafe::<PocDataHeader>(&poc).calls_count;
+
+    let magic = generic::data_const_unsafe::<PocDataHeader>(poc).magic;
+    let poc = unsafe { PocData::new(magic, std::mem::transmute(poc.as_ptr())) };
+
+    let mut poc_o = PocData::new(magic, 0);
+
+    let mut xids = vec![];
+    for i in (0..cc)
+        .filter(|&i| i != index)
+    {
+        if let Ok(call) = adjust_sid(0, &mut xids, poc.call(i)) {
+            poc_o.append(&call, poc.desc(i).kin);
         }
     }
 

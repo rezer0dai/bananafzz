@@ -84,8 +84,9 @@ impl ISerializableArg for SharedWrite {
         poc_fd: &[u8],
         prefix: &[u8], 
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
+        data_load: bool,
     ) -> Result<usize, String> {
-        self.arg.load(mem, dump, poc_fd, prefix, fd_lookup)
+        self.arg.load(mem, dump, poc_fd, prefix, fd_lookup, data_load)
     }
 }
 

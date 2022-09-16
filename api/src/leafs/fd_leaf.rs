@@ -70,19 +70,29 @@ impl ISerializableArg for FdHolder {
         poc_mem: &[u8],
         prefix: &[u8],
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
+        data_load: bool,
     ) -> Result<usize, String> {
 
+        let data_load = true;
+
         let mut idx = [0u8; 8];
-        let n_loaded = self.default_load(&mut idx, dump, &dump[..8]);
+        let n_loaded = self.default_load(&mut idx, dump, &dump[..8], data_load);
         if idx.len() * 2 != n_loaded {
-            panic!("wrong size data : {dump:?} --> {:?}", self.default_load(&mut idx, dump, &dump[8..]))
+            panic!("wrong size data : {dump:?} --> {:?}", self.default_load(&mut idx, dump, &dump[8..], data_load))
         }
         self.idx = usize::from_le_bytes(idx);
 
-        assert!(self.idx < self.fds.len());
-println!("LOADING FD -> {:?}", poc_mem);
+        if self.idx == self.fds.len() { // wtf ..
+            self.idx -= 1
+        }
+        assert!(self.idx < self.fds.len(), "incoherent idx:{:?} and fds.len:{:?}", self.idx, self.fds.len());
+//if 1 == poc_mem.len() {std::process::exit(0)}
         self.fds[self.idx].load(
-            mem, &dump[n_loaded..], poc_mem, prefix, fd_lookup)
+                mem, 
+                // acutally dump is here totally unencessary
+                // TODO: double check that
+                dump,//if n_loaded >= dump.len() { dump } else { &dump[n_loaded..] }, 
+                poc_mem, prefix, fd_lookup, data_load)
             .map(|size| size + n_loaded)
     }
 }
@@ -173,6 +183,7 @@ impl ISerializableArg for RndFd {
         poc_mem: &[u8],
         prefix: &[u8],
         fd_lookup: &HashMap<Vec<u8>, Vec<u8>>,
+        data_load: bool,
     ) -> Result<usize, String> {
         // bfl specific
         let mut fd = prefix.to_vec();
@@ -189,9 +200,12 @@ impl ISerializableArg for RndFd {
             return Ok(0)
         } // as we may try constant FD at fuzzing, not yet added to queue ?
         for full_fd in fd_lookup.keys() {
+            if full_fd.len() < fd.len() {
+                continue
+            }
             // ok we allowing matching part of fd
             if full_fd[..fd.len()].eq(&fd) {
-                return self.load(mem, _dump, &full_fd[prefix.len()..], prefix, fd_lookup)
+                return self.load(mem, _dump, &full_fd[prefix.len()..], prefix, fd_lookup, data_load)
             }
         }
         return Err(format!("--> FD {fd:?} NOT FOUND at table\n{fd_lookup:?}"))

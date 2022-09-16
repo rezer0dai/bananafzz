@@ -62,6 +62,8 @@ pub struct BananizedFuzzyLoop {
 
     passed: usize,
     n_attempts: usize,
+
+    pub wanted: Option<WantedMask>,
 }
 
 impl BananizedFuzzyLoop {
@@ -93,6 +95,8 @@ impl BananizedFuzzyLoop {
 
             passed: 0,
             n_attempts: 0,
+
+            wanted: None,
         }
     }
 
@@ -239,9 +243,13 @@ debug!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).un
 
             return self.stop_or_force(call_attempts!(call, state, self.n_attempts, poc), 1.0)//try add something
         }
-println!(".............start to load arg");
-        if let Err(msg) = call.load_args(&poc.dmp, &poc.mem, &Self::sid_prefix(poc.info.sid), &self.fid_lookup) {
-panic!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name());
+
+        let data_load_freedom_ratio = if self.poc.do_gen() && rand::thread_rng().gen_bool(
+            self.cfg.allow_data_load_freedom_ratio) 
+        { 1.0 - self.cfg.data_load_freedom_ratio } else { 1. };
+
+        if let Err(msg) = call.load_args(&poc.dmp, &poc.mem, &Self::sid_prefix(poc.info.sid), &self.fid_lookup, data_load_freedom_ratio) {
+//panic!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name());
             return false
         }
 
@@ -322,7 +330,9 @@ error!("STOP4");
 //lock current state.uid as fuzzing target for generated banana call to AFL
         self.fuzzy_cnt += 1;
 
-        if 2 >= self.fuzzy_cnt % 20 {//3 is maybe too low time for ctor to appear ?
+        if 2 >= self.fuzzy_cnt % 13 {//3 is maybe too low time for ctor to appear ?
+            // as syncer assure us if it is not ctor, aftermath should follow right away
+            // but if it is ctor, there is a time for racing with others..
             self.fuzzy_uid = 0
         }
         if 0 == self.fuzzy_uid {
@@ -375,7 +385,7 @@ trace!("-------- CALL : OK SHAAARE");
 
         if self.poc.is_last_call(1 + self.poc_ind)
             || self.poc.added > self.cfg.max_inserts
-            || !rand::thread_rng().gen_bool(1.0 - self.poc.added as f64 / self.cfg.max_inserts as f64) 
+            || rand::thread_rng().gen_bool(self.poc.added as f64 / self.cfg.max_inserts as f64) 
         { return }
                 
         self.poc.add_one(self.poc_ind);
@@ -495,6 +505,13 @@ trace!("AFTERMATH FUZZY");
         }
 */
     }
+
+    pub fn stop(&mut self) {
+        while !self.poc.share(self.cfg.pocmem) {
+            ;
+        }
+    }
+
     pub fn dtor(&mut self, _state: &StateInfo) { }
     pub fn revert(&mut self, _info: &StateInfo, _call: &Call, _mask: WantedMask) { }
 }

@@ -36,8 +36,8 @@ where
     }
         
     // we need to de-transform, at very least for fd-arg
-    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], prefix: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>) -> Result<usize, String> {
-        match self.arg.load(mem, dump, data, prefix, fd_lookup) {
+    fn load(&mut self, mem: &mut[u8], dump: &[u8], data: &[u8], prefix: &[u8], fd_lookup: &HashMap<Vec<u8>,Vec<u8>>, data_load: bool) -> Result<usize, String> {
+        match self.arg.load(mem, dump, data, prefix, fd_lookup, data_load) {
             Ok(size) => {
                 let data = &(self.transform)(&mem);
                 mem.clone_from_slice(&data);

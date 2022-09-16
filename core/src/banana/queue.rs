@@ -156,6 +156,11 @@ impl FuzzyQ {
         // ok lets other notify to quit
         //self.wake_up(WantedMask::default(), 0);
     }
+    pub(crate) fn finish(&self) {
+        for obs in &self.observers_call {
+            obs.stop()
+        }
+    }
 
     /// certain calls want to intercorporate foreign state
     ///
