@@ -168,6 +168,7 @@ impl Call {
         let mut off_mem = 0;
         for arg in self.args.iter_mut() {
             let data_load = rand::thread_rng().gen_bool(data_load_freedom_ratio);
+//println!("<{:?}>data load : {data_load:?} | old : [{:?}]", self.name, &dump[off..]);
             let asize = arg.size();
             let size = arg.load(&dump[off..], &data[off_mem..][..asize], prefix, fd_lookup, data_load)?;
             off += size;

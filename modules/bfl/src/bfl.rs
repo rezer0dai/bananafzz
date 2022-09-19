@@ -220,7 +220,7 @@ debug!("uid : {:?} x {:?} \n\t FULL UID MAP {:?}", state.uid(), poc.info.uid, se
 
         if state.level != poc.info.level {
 
-error!("[bfl] object:{:X}=={} WRONG #levels {:?} <cid: {:?} ; name = {:?}> stop or force in bananaq#{:X}", poc.info.sid, poc.info.sid, (state.level, poc.info.level), poc.info.cid, state.name, bananaq::qid(&state.bananaq).unwrap());
+info!("[bfl] object:{:X}=={} WRONG #levels {:?} <cid: {:?} ; name = {:?}> stop or force in bananaq#{:X}", poc.info.sid, poc.info.sid, (state.level, poc.info.level), poc.info.cid, state.name, bananaq::qid(&state.bananaq).unwrap());
 
             return self.stop_or_force(
                 call_attempts!(call, state, self.n_attempts, poc), 
@@ -247,6 +247,8 @@ debug!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).un
         let data_load_freedom_ratio = if self.poc.do_gen() && rand::thread_rng().gen_bool(
             self.cfg.allow_data_load_freedom_ratio) 
         { 1.0 - self.cfg.data_load_freedom_ratio } else { 1. };
+
+//println!("info : {:?} {data_load_freedom_ratio} | {:?}", call.name(), self.poc.do_gen());
 
         if let Err(msg) = call.load_args(&poc.dmp, &poc.mem, &Self::sid_prefix(poc.info.sid), &self.fid_lookup, data_load_freedom_ratio) {
 //panic!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name());
@@ -330,10 +332,13 @@ error!("STOP4");
 //lock current state.uid as fuzzing target for generated banana call to AFL
         self.fuzzy_cnt += 1;
 
-        if 2 >= self.fuzzy_cnt % 13 {//3 is maybe too low time for ctor to appear ?
+        if self.fuzzy_cnt > 10 // seems fuzzy object have troubles
+            && state.uid() != self.fuzzy_uid 
+        {
             // as syncer assure us if it is not ctor, aftermath should follow right away
             // but if it is ctor, there is a time for racing with others..
-            self.fuzzy_uid = 0
+            self.fuzzy_uid = 0;
+            self.fuzzy_cnt = 0;
         }
         if 0 == self.fuzzy_uid {
             self.fuzzy_uid = state.uid()
@@ -387,7 +392,7 @@ trace!("-------- CALL : OK SHAAARE");
             || self.poc.added > self.cfg.max_inserts
             || rand::thread_rng().gen_bool(self.poc.added as f64 / self.cfg.max_inserts as f64) 
         { return }
-                
+//if self.poc.added > 30 { println!("GOOOD ADDED LOTS > {:?}", self.poc.added); std::process::exit(0); }
         self.poc.add_one(self.poc_ind);
         self.fuzzy_cnt = 1;
     }
@@ -420,6 +425,14 @@ trace!("-------- CTOR : OK SHAAARE");
             bananaq::stop(&state.bananaq).unwrap()
         }
         self.call_data.clear();
+
+        if self.poc.is_last_call(1 + self.poc_ind)
+            || self.poc.added > self.cfg.max_inserts
+            || rand::thread_rng().gen_bool(1f64 / (1 + self.cfg.max_inserts - self.poc.added) as f64) 
+        { return true }
+        self.poc.add_one(self.poc_ind);
+        self.fuzzy_cnt = 1;
+
         true
     }
 

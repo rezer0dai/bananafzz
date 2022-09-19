@@ -20,6 +20,7 @@ pub struct FuzzyConfig {
 
 // fuzzer specifics
     pub active_time: u64,
+    pub repro_time: u64,
     pub push_sleep: u64,
     pub after_creation_sleep: u64,
     pub failing_delay_limit: u64,

@@ -18,7 +18,7 @@ use core::state::state::StateInfo;
 extern crate common;
 
 const MAX_CID: usize = 0x1000;
-const MAX_AID: usize = 4;
+const MAX_AID: usize = 1 + 3/*atackers*/ + 2/*mints*/;
 
 struct FeedBack {
     wanted: Option<WantedMask>,
@@ -61,13 +61,13 @@ impl FeedBack {
     }
 
     fn ctor(&mut self, state: &StateInfo) -> bool {
-        if let Some(cid) = self.ctormap.get(&state.uid()) {
+        if let Some(&cid) = self.ctormap.get(&state.uid()) {
             self.cc += 1;
         // read aid from the back of the structure, last byte ?
             self.logic(
                 state, 
-                state.fd.data().iter().last().unwrap().clone() - 2,//[state.fd.data().len()-1] - 2,
-                cid - 0x100
+                state.fd.data().iter().last().unwrap().clone(),
+                cid
             );
         }
         true
@@ -91,31 +91,24 @@ impl FeedBack {
             "call info {:?}, size ? {:?}", call.name(), call.einfo().len()
         );
 
-        let aid = 1 + call.einfo()[0] - 2; // - Users::Attacker, get from config!!
-        let aid = if aid > 7 { 0 } else { aid };
-
-        let cid = unsafe { std::mem::transmute::<_, usize>(call.id()) } - 0x100; // - 0x100 from config, first custom call id
-        self.logic(state, aid, cid);
+        let slot = call.einfo()[0];
+        let cid = unsafe { std::mem::transmute::<_, usize>(call.id()) };
+        self.logic(state, slot, cid);
         true
     }
 
-    fn logic(&mut self, state: &StateInfo, aid: u8, cid: usize) {
-if aid > 3 {
-    println!("AID GOES WRONG : {aid:?} for {cid:?} || {:?}", state.name);
-    std::process::exit(0);
-}
-        let aim: u8 = 2u8.pow(aid as u32).into();
-        self.hitmap[cid] |= aim;
+    fn logic(&mut self, state: &StateInfo, slot: u8, cid: usize) {
+        self.hitmap[cid] |= slot;
         let _ = self.hitset.insert(cid);
 /*
-if aim != self.hitmap[cid] {
+if slot != self.hitmap[cid] {
     println!(" ATTACKER : {:X} -> |{:?}|", self.hitmap[cid], self.hitmap[cid].count_ones());
     std::process::exit(0)
 }
 */
 
         for &i in &self.hitset { // go over all calls
-            if 1 != aim && 1 != self.hitmap[i] && 0 == aim & self.hitmap[i] {
+            if 1 != slot && 1 != self.hitmap[i] && 0 == slot & self.hitmap[i] {
                 continue // this cid is not hit by this attacker yet
             }
 

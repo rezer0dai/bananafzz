@@ -18,15 +18,21 @@ pub struct LimiterConfig {
     only_sucks: bool,
     num_of_calls: u32,
     failed_limit: u32,
+    dos_limit: u32,
 }
 struct Limiter {
     cfg: LimiterConfig,
     counter: AtomicU32,
     n_total: AtomicU32,
+    n_dos: AtomicU32,
 }
 
 impl ICallObserver for Limiter {
     fn notify(&self, state: &StateInfo, _: &mut Call) -> Result<bool, WantedMask> {
+        if 0 != self.cfg.dos_limit 
+            && self.n_dos.fetch_add(1, Ordering::Relaxed) > self.cfg.dos_limit 
+        { bananaq::stop(&state.bananaq).unwrap() }
+
         if 0 == self.cfg.failed_limit {
             return Ok(true)
         }
@@ -40,6 +46,7 @@ impl ICallObserver for Limiter {
         Ok(false)
     }
     fn aftermath(&self, state: &StateInfo, call: &mut Call) {
+        self.n_dos.store(0, Ordering::Relaxed);
         if self.cfg.only_sucks && !call.ok() {
             return
         }
@@ -55,6 +62,7 @@ impl Limiter {
             cfg: *cfg,
             counter: AtomicU32::new(0),
             n_total: AtomicU32::new(0),
+            n_dos: AtomicU32::new(0),
         }
     }
 }

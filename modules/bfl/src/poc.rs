@@ -197,25 +197,29 @@ impl PocData {
         // by default we want mark all pocs from banana as repro-only, AFL choosing mode afterwards
         if self.descs.len() != self.calls.len() {
             panic!("NOT MADE EQUAL");
-            //            return vec![]
+            // return vec![]
         }
+        if self.calls.len() > self.runtime.len() {
+            info!("HALF~BAKED : {:?}", (1 + self.calls.len(), self.runtime.len()));
+            self.block.append(&mut (self.runtime.len()..self.calls.len()).collect::<Vec<usize>>());
+        } //seems this could happen, TODO : how ??
 
         self.drop_blocked();
 
+        if self.calls.len() + 1 < self.runtime.len() || 0 == self.runtime.len() {
+            error!("--->>> {:?}", (1 + self.calls.len(), self.runtime.len()));
+            return vec![]; //failed to repro!!
+        }
+
         self.info.calls_count = self.calls.len();
         if 0 == self.info.calls_count {
-            panic!("NONE CALLS");
-            //            return vec![]
+            error!("NONE CALLS");
+             return vec![]
         }
         self.info.desc_size = self.info.calls_count * size_of::<PocCallDescription>();
         self.info.insert_ind = !0;
         self.info.split_at = !0;
         self.info.split_cnt = 0;
-
-        if self.calls.len() != self.runtime.len() && 1 + self.calls.len() != self.runtime.len() {
-            debug!("--->>> {:?}", (1 + self.calls.len(), self.runtime.len()));
-            return vec![]; //failed to repro!!
-        } //seems this could happen, TODO : how ??
 
         assert!(
             self.calls.len() == self.runtime.len() || 1 + self.calls.len() == self.runtime.len(),
@@ -313,11 +317,11 @@ impl PocData {
         }
         self.info.magic = self.magic;
         if self.upload_poc(addr) {
-            info!("UPLOADED!! -> {:?}", self.do_gen);
+            //info!("UPLOADED!! -> {:?}", if self.do_gen { "generative" } else { "repro" });
             self.shared = true;
             unsafe { REPROED = true } //temporary
         } else {
-            info!("UPLOAD FAILED");
+            error!("UPLOAD FAILED");
         }
         true
     }
