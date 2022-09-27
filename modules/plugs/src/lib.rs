@@ -35,7 +35,9 @@ use libdebug::DebugConfig;
 
 extern crate libmediator;
 
-extern crate libfeedback;
+extern crate libsolback;
+extern crate libbehavior;
+use libbehavior::BehaviorConfig;
 
 extern crate libbfl;
 use libbfl::BananizedFuzzyLoopConfig;
@@ -49,7 +51,8 @@ pub struct ConfigCore {
     limiter: Option<LimiterConfig>,
     debug: Option<DebugConfig>,
     mediator: Option<()>,
-    feedvack: Option<()>,
+    solback: Option<()>,
+    behavior: Option<BehaviorConfig>,
     pub bfl: Option<BananizedFuzzyLoopConfig>, //lets share only what we know we need
     smb: Option<()>,
 }
@@ -158,9 +161,13 @@ impl Plugins {
                 name: module.clone(),
                 obs: libmediator::observers(),
             },
-            "libfeedback" => Observer {
+            "libsolback" => Observer {
                 name: module.clone(),
-                obs: libfeedback::observers(),
+                obs: libsolback::observers(),
+            },
+            "libbehavior" => Observer {
+                name: module.clone(),
+                obs: libbehavior::observers(&cfg.behavior),
             },
             "libbfl" => Observer {
                 name: module.clone(),

@@ -17,7 +17,8 @@ use poc::PocData;//{PocData, INCOMPLETE};
 pub use info::{BananizedFuzzyLoopConfig, PocCallHeader};
 
 extern crate rand;
-use self::rand::Rng;
+use rand::prelude::*;
+use rand::Rng;
 
 type TUidLookup = BTreeMap<u64, u64>;
 type TFdLookup = HashMap< Vec<u8>, Vec<u8> >;
@@ -31,13 +32,15 @@ macro_rules! call_attempts {
             // for $state attempts does not account before created o objects, level > 0
             // as for $poc.info.leve we refuse to skip ctor in repro
             // as it will lead to future broken calls by default..
-            $call.attempts($n_attempts)
+            1//$call.attempts($n_attempts)
         } else { 0 }
     };
 }
 
 pub struct BananizedFuzzyLoop {
     cfg: BananizedFuzzyLoopConfig,
+
+    max2insert: usize,
 
     fid_lookup: TFdLookup,
     uid_lookup: TUidLookup,
@@ -64,13 +67,31 @@ pub struct BananizedFuzzyLoop {
     n_attempts: usize,
 
     pub wanted: Option<WantedMask>,
+
+    ind: usize,
+    reload: Vec<bool>,
 }
 
 impl BananizedFuzzyLoop {
     pub fn new(config: &BananizedFuzzyLoopConfig) -> BananizedFuzzyLoop {
         //we should polute fid_lookup by empty and invalid ?
+        let poc = PocData::new(config.magic, config.shmem);
+
+        let n_total = poc.header().calls_count;
+        let n_reload = if poc.do_gen() {
+            rand::thread_rng().gen_range(
+                0..1 + (config.allow_data_load_freedom_ratio * n_total as f64) as usize) 
+        } else { 0 };
+
+        let reload = if n_reload > 0 { 
+            (0..1 + n_total)
+                .choose_multiple(&mut rand::thread_rng(), n_reload)
+        } else { vec![] };
+
         BananizedFuzzyLoop {
             cfg: *config,
+            
+            max2insert: if 0 != n_total { config.max_inserts } else { usize::MAX }, // no limit ( liblimiter should be in place )
 
             fid_lookup : TFdLookup::new(),
             uid_lookup : TUidLookup::new(),
@@ -78,7 +99,7 @@ impl BananizedFuzzyLoop {
             fid_once : TFdOnce::new(),
             uid_once : TUidOnce::new(),
 //load POC from shared memory!!
-            poc : PocData::new(config.magic, config.shmem),
+            poc : poc,
             poc_ind : 0,
 
             ctor_done : true,
@@ -97,6 +118,11 @@ impl BananizedFuzzyLoop {
             n_attempts: 0,
 
             wanted: None,
+
+            ind: 0,
+            reload: (0..n_total)
+                .map(|i| reload.contains(&i))
+                .collect::<Vec<bool>>(),
         }
     }
 
@@ -151,7 +177,7 @@ impl BananizedFuzzyLoop {
         }
 
         let max_n_try = self.cfg.max_allowed_wait_count_per_call as f64 * 0.8;
-        let n_try = 1.0 * (n_attempts % self.cfg.max_allowed_wait_count_per_call) as f64;
+        let n_try = (n_attempts % self.cfg.max_allowed_wait_count_per_call) as f64;
         if max_n_try > n_try // seems too in-efficient to do ?
             && self.n_attempts < self.cfg.max_allowed_wait_count_per_call
             && self.passed < 10
@@ -167,28 +193,31 @@ trace!("atempts are good, try harder => {:?} /{n_attempts}", self.poc_ind);
         self.n_attempts = 0;
 
         if self.poc.do_gen() // we may try to insert someting here
-            && self.poc.added < self.cfg.max_inserts 
+            && self.poc.added < self.max2insert 
 // ok to do as if poc.do_gen it is not counted to coverage feedback!!
             && rand::thread_rng().gen_bool(add_prob) 
-            && !self.poc.is_last_call(1 + self.poc_ind)//this does not make sense to enable
+            //&& !self.poc.is_last_call(1 + self.poc_ind)//this does not make sense to enable
 //        { return self.poc.add_one(self.poc_ind) }
         { 
-info!("@@@@@@@@@@@@@@@@@@@@@@@@ adding one more to fuzz ({:?} x {:?}) || stats => {:?}", (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed));
+println!("@@@@@@@@@@@@@@@@@@@@@@@@ adding one more to fuzz ({:?} x {:?}) || stats => {:?}", (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed));
             return self.poc.add_one(self.poc_ind) 
         }
-
         let poc = PocCall::new(&self.poc.load(self.poc_ind));
+warn!("$$$$$$$$$$$$$$$$$$$$$$$$ lets do skip, incomplete, [call : {}]({:?} x {:?}) || stats : [{:?}] add_prob:{:?}", poc.info.cid, (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed), add_prob);
+        self.skip()
+    }
+
+    fn skip(&mut self) -> bool {
 
         self.poc.skip(self.poc_ind);
         self.poc_ind += 1;
         self.fuzzy_cnt = 0;
-warn!("$$$$$$$$$$$$$$$$$$$$$$$$ lets do skip, incomplete, [call : {}]({:?} x {:?}) || stats : [{:?}] add_prob:{:?}", poc.info.cid, (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed), add_prob);
 
         //unsafe { INCOMPLETE = true }
         return false
     }
     fn notify_locked_repro(&mut self, state: &StateInfo, call: &mut Call) -> bool {
-trace!("nbotify ->  {:?} <{:?}>", state.uid(), self.poc.info.calls_count);
+trace!("nbotify ->  {:?} sid:{:?} <{:?}> (cid:{:?})", state.uid(), u64::from(state.id), self.poc.info.calls_count, u64::from(call.id()));
         if self.poc_ind == self.poc.max_ind() {
 debug!("pocind");
             return false //last one was ctor, skip this call and start fuzzy-generate
@@ -198,13 +227,14 @@ debug!("pocind");
         }
         let poc = PocCall::new(&self.poc.load(self.poc_ind));
 
-        if u64::from(state.id) != poc.info.sid {
+        if u64::from(state.id) != poc.info.sid { // should happen casually
             // should not happen if environment is predictable
             // though when we use splice or insert, we messing with this
         // aka environnment of origina POC is changed
-debug!("#sid (object:{:?}; bananaq.len={:?}) stop or forcese  [{:?}/{:?}] -> <{:?}][{:?}> last_call {:?}", state.uid(), bananaq::len(&state.bananaq).unwrap(), self.poc_ind, self.poc.info.calls_count, u64::from(state.id), poc.info.sid, self.poc.is_last_call(1 + self.poc_ind));
-            return self.stop_or_force(call_attempts!(call, state, self.n_attempts, poc), 0.7)
-//            return false
+//debug!("#sid (object:{:?}; bananaq.len={:?}) stop or forcese  [{:?}/{:?}] -> <{:?}][{:?}> last_call {:?}", state.uid(), bananaq::len(&state.bananaq).unwrap(), self.poc_ind, self.poc.info.calls_count, u64::from(state.id), poc.info.sid, self.poc.is_last_call(1 + self.poc_ind));
+            // but OK if too much of attempts do it, ignore calls attempts
+            return self.stop_or_force(1, 1.0)
+            //return false
         }
 
         if !state.fd.is_invalid() // need to here cuz dupped
@@ -214,26 +244,30 @@ debug!("fid --> {:?}", (poc.fid, state.fd.data())); // seems common tbh
         }
 
         if !self.resolve_uid(poc.info.uid, state.uid()) {
-debug!("uid : {:?} x {:?} \n\t FULL UID MAP {:?}", state.uid(), poc.info.uid, self.uid_lookup);
+debug!("uid : {:?} x {:?} --> LEVEL : {:?}\n\t FULL UID MAP {:?}", state.uid(), poc.info.uid, state.level, self.uid_lookup);
             return false
         }//C&C iterative approach, as we monitoring it from the begining!! 
 
         if state.level != poc.info.level {
 
-info!("[bfl] object:{:X}=={} WRONG #levels {:?} <cid: {:?} ; name = {:?}> stop or force in bananaq#{:X}", poc.info.sid, poc.info.sid, (state.level, poc.info.level), poc.info.cid, state.name, bananaq::qid(&state.bananaq).unwrap());
+debug!("[bfl] object:{:X}=={} WRONG #levels {:?} <cid: {:?} ; name = {:?}> stop or force in bananaq#{:X}", poc.info.sid, poc.info.sid, (state.level, poc.info.level), poc.info.cid, state.name, bananaq::qid(&state.bananaq).unwrap());
+            if !self.poc.do_gen() {
+                return self.skip()
+            }
 
-            return self.stop_or_force(
-                call_attempts!(call, state, self.n_attempts, poc), 
+            return self.stop_or_force( // seems crossover or insert happened
+                self.cfg.max_allowed_wait_count_per_call - 1,// call_attempts!(call, state, self.n_attempts, poc), 
                 if 0 != poc.info.level { 0.5 } else { 0.0 });
         }
 
         //seems problem hereis poc.info.cid = 0, aka WTF ??
-        if CallTableId::Id(poc.info.cid) != call.id() {
+        if CallTableId::Id(poc.info.cid) != call.id() { // should happen casually, just select other call
 
-debug!("#cid ({:?} vs {:?}) stop or force in bananaq#{:X}", poc.info.cid, call.id(), bananaq::qid(&state.bananaq).unwrap());
+//debug!("#cid ({:?} vs {:?}) stop or force in bananaq#{:X}", poc.info.cid, call.id(), bananaq::qid(&state.bananaq).unwrap());
 
 //for _ in 0..1000 { println!("cid with levels {:?}", (poc.info.level, state.level, poc.info.cid, call.id(), self.poc_ind)) }
-            return self.stop_or_force(call_attempts!(call, state, self.n_attempts, poc), 0.0)//seems wanted call is dead ??
+//            return self.stop_or_force(call_attempts!(call, state, self.n_attempts, poc), 0.0)//seems wanted call is dead ??
+            return false
         }
         self.n_attempts = 0;
         self.passed += 1;
@@ -241,7 +275,7 @@ debug!("#cid ({:?} vs {:?}) stop or force in bananaq#{:X}", poc.info.cid, call.i
 
 debug!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).unwrap());
 
-            return self.stop_or_force(call_attempts!(call, state, self.n_attempts, poc), 1.0)//try add something
+            return self.stop_or_force(call_attempts!(call, state, self.n_attempts, poc), 0.5)//try add something
         }
 
         let data_load_freedom_ratio = if self.poc.do_gen() && rand::thread_rng().gen_bool(
@@ -250,8 +284,12 @@ debug!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).un
 
 //println!("info : {:?} {data_load_freedom_ratio} | {:?}", call.name(), self.poc.do_gen());
 
+        let data_load_freedom_ratio = if self.reload[self.ind] { 
+            1.0 - self.cfg.data_load_freedom_ratio 
+        } else { 1. };
+
         if let Err(msg) = call.load_args(&poc.dmp, &poc.mem, &Self::sid_prefix(poc.info.sid), &self.fid_lookup, data_load_freedom_ratio) {
-//panic!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name());
+error!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name());
             return false
         }
 
@@ -288,7 +326,8 @@ info!("#{:?}: call {:?} SUCKSES!!", self.poc_ind, call.name());
         self.calls_cnt += 1;
         self.fuzzy_cnt = 0;//ok managed to go for repro
         self.poc_ind += 1; // poc_ind will be updated only if all observers agree == call was allowed
-trace!("[bfl] approved-call {} / {} :: {:?} [ uid :: {:?}", state.name, call.name(), call.id(), state.uid());
+        self.ind += 1;
+trace!("[bfl] <{}> approved-call {} / {} :: {:?} [ uid :: {:?}", self.calls_cnt, state.name, call.name(), call.id(), state.uid());
     }
     fn verify_ctor(&mut self, state: &StateInfo) -> bool {
         let poc = PocCall::new(&self.poc.load(self.poc_ind));
@@ -313,6 +352,7 @@ trace!("APPROVED-CTOR -> {:?}", state.fd.data());
         }
         self.poc.runtime(self.level, state.uid(), state.fd.data());
 trace!("[bfl] approved-ctor {} :: {:?}", state.name, state.uid());
+        self.ind += 1;
         self.poc_ind += 1;
         self.ctors_cnt += 1;
         // this matching is enforced by notify_locked deny all ctors 
@@ -323,8 +363,7 @@ trace!("[bfl] approved-ctor {} :: {:?}", state.name, state.uid());
     }
 
     pub fn notify_locked_fuzzy(&mut self, state: &StateInfo, call: &mut Call) -> bool {
-
-        if !self.poc.do_gen() && !self.poc.is_last_call(self.poc_ind) {
+        if !self.poc.do_gen() && self.poc.is_last_call(self.poc_ind) {
 error!("STOP4");
             bananaq::stop(&state.bananaq).unwrap();
             return false
@@ -384,13 +423,13 @@ info!("OK AFTERMATH CALL GOODIE : #{:?}: {:?}", self.poc_ind, call.name());
 //now load it to SHMEM -> should do exit process too!!
         self.poc.push(self.poc_ind, &call_data, call.kin());
         if self.poc.share(self.cfg.pocmem) {
-trace!("-------- CALL : OK SHAAARE");
+trace!("-------- CALL : OK SHAAARE -> {:?}", self.poc_ind);
             return bananaq::stop(&state.bananaq).unwrap()
         }
 
-        if self.poc.is_last_call(1 + self.poc_ind)
-            || self.poc.added > self.cfg.max_inserts
-            || rand::thread_rng().gen_bool(self.poc.added as f64 / self.cfg.max_inserts as f64) 
+        if /*self.poc.is_last_call(1 + self.poc_ind)
+            ||*/ self.poc.added > self.max2insert
+            || rand::thread_rng().gen_bool(self.poc.added as f64 / self.max2insert as f64) 
         { return }
 //if self.poc.added > 30 { println!("GOOOD ADDED LOTS > {:?}", self.poc.added); std::process::exit(0); }
         self.poc.add_one(self.poc_ind);
@@ -421,14 +460,14 @@ trace!("refusing ctor");
         self.fuzzy_uid = 0;
         self.poc.push(self.poc_ind, &self.call_data, 0);//we avoid crossover over ctors ?
         if self.poc.share(self.cfg.pocmem) {
-trace!("-------- CTOR : OK SHAAARE");
+trace!("-------- CALL : OK SHAAARE -> {:?}", self.poc_ind);
             bananaq::stop(&state.bananaq).unwrap()
         }
         self.call_data.clear();
 
-        if self.poc.is_last_call(1 + self.poc_ind)
-            || self.poc.added > self.cfg.max_inserts
-            || rand::thread_rng().gen_bool(1f64 / (1 + self.cfg.max_inserts - self.poc.added) as f64) 
+        if /*self.poc.is_last_call(1 + self.poc_ind)
+            ||*/ self.poc.added > self.max2insert
+            || rand::thread_rng().gen_bool(1f64 / (1 + self.max2insert - self.poc.added) as f64) 
         { return true }
         self.poc.add_one(self.poc_ind);
         self.fuzzy_cnt = 1;
@@ -466,16 +505,17 @@ error!("STOP5 {:?} / {:?}", (self.poc_ind, self.poc.max_ind()), self.poc.info.ca
             // with all 0, means we will allow anything
             return Err(WantedMask{mid:42, ..WantedMask::default()})
         }
-
         let poc = PocCall::new(&self.poc.load(self.poc_ind));
-        Err(WantedMask{
+        let wanted = WantedMask{
             mid: 42,
             uid: if let Some(uid) = self.uid_lookup.get(&poc.info.uid) {
                 *uid
             } else { 0 },
             sid: poc.info.sid,
             cid: poc.info.cid,
-        })
+        };
+debug!("we query for next: {wanted:?}");
+        Err(wanted)
     }
     pub fn ctor(&mut self, state: &StateInfo) -> bool {
 trace!("NEW OBJECT!!! {:?} + {:?}", state.id, state.fd.data());

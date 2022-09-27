@@ -20,7 +20,7 @@ extern crate common;
 const MAX_CID: usize = 0x1000;
 const MAX_AID: usize = 1 + 3/*atackers*/ + 2/*mints*/;
 
-struct FeedBack {
+struct SolBack {
     wanted: Option<WantedMask>,
     hitmap: [u8; MAX_CID],
     hitset: BTreeSet<usize>,
@@ -29,7 +29,7 @@ struct FeedBack {
     level: usize,
     tictoc: Option<Instant>
 }
-impl FeedBack {
+impl SolBack {
     fn new() -> Self {
         Self {
             wanted: None,
@@ -143,13 +143,13 @@ if aid > 1 || (aid > 0 && 0 == 1 & self.hitmap[i])
     pub fn stop(&mut self) { }
 }
 
-common::callback_proxy!(FeedBack);
+common::callback_proxy!(SolBack);
 
 pub fn observers() -> (
     Option<Box<dyn IStateObserver>>,
     Option<Box<dyn ICallObserver>>,
 ) {
-    let lookup = Arc::new(RwLock::new(FeedBack::new()));
+    let lookup = Arc::new(RwLock::new(SolBack::new()));
     (
         Some(Box::new(Proxy::new(Arc::clone(&lookup)))),
         Some(Box::new(Proxy::new(Arc::clone(&lookup)))),

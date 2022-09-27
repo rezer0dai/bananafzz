@@ -88,7 +88,7 @@ impl PocData {
             poc.parse_descs();
             poc
         };
-
+/*
         if poc.do_gen {
             info!(
                 "NEW POC : {:?}",
@@ -102,7 +102,7 @@ impl PocData {
                 info!("\n\t?> Header : {:?}", head);
             }
         }
-
+*/
         poc
     }
 
@@ -140,12 +140,12 @@ impl PocData {
             );
         }
         let ind = ind + self.added; // - self.block.len();
-
+/*
         if self.inserted {
             // && ind != self.info.insert_ind {
             return; // we already inserted one as we are in INSERT MODE of AFL
         }
-
+*/
         self.added += 1;
 
         self.descs.insert(
@@ -175,6 +175,9 @@ impl PocData {
     }
     fn drop_blocked(&mut self) {
         for ind in self.block.drain(..).enumerate().map(|(i, ind)| ind - i) {
+            if self.descs.len() == ind {
+                break
+            }
             self.descs.remove(ind);
             let call = self.calls.remove(ind);
             //ok we need to adjust offset table too
@@ -197,40 +200,36 @@ impl PocData {
         // by default we want mark all pocs from banana as repro-only, AFL choosing mode afterwards
         if self.descs.len() != self.calls.len() {
             panic!("NOT MADE EQUAL");
-            // return vec![]
         }
-        if self.calls.len() > self.runtime.len() {
-            info!("HALF~BAKED : {:?}", (1 + self.calls.len(), self.runtime.len()));
-            self.block.append(&mut (self.runtime.len()..self.calls.len()).collect::<Vec<usize>>());
-        } //seems this could happen, TODO : how ??
-
-        self.drop_blocked();
-
-        if self.calls.len() + 1 < self.runtime.len() || 0 == self.runtime.len() {
-            error!("--->>> {:?}", (1 + self.calls.len(), self.runtime.len()));
-            return vec![]; //failed to repro!!
+        if 0 == self.runtime.len() {
+            error!("not a signle call did goes trough");
+            return vec![];
         }
+
+        println!(
+            "CRAFT POC => {:?} x {:?}",
+            self.calls.len(),
+            self.runtime.len(),
+        );
+
+        self.drop_blocked(); // drop blocked in between
+        while self.calls.len() != self.runtime.len() + self.block.len() {
+            self.block.push(self.runtime.len() + self.block.len());
+        } // trim if runtime < calls, we gots blocked somewhere ( limiter, too much inserted in the middle )
+        self.drop_blocked(); // drop blocked after trim
 
         self.info.calls_count = self.calls.len();
-        if 0 == self.info.calls_count {
-            error!("NONE CALLS");
-             return vec![]
-        }
         self.info.desc_size = self.info.calls_count * size_of::<PocCallDescription>();
         self.info.insert_ind = !0;
         self.info.split_at = !0;
         self.info.split_cnt = 0;
 
+        assert!(0 != self.info.calls_count);
+
         assert!(
-            self.calls.len() == self.runtime.len() || 1 + self.calls.len() == self.runtime.len(),
+            self.calls.len() == self.runtime.len(),
             "#calls x #runtime => {:?}",
             (self.calls.len(), self.runtime.len())
-        );
-
-        debug!(
-            "CRAFT POC => {:?} x {:?}",
-            self.calls.len(),
-            self.runtime.len()
         );
 
         let mut data = vec![];
@@ -286,9 +285,11 @@ impl PocData {
     }
 
     fn upload_poc(&mut self, addr: usize) -> bool {
+        /*
         if !self.do_gen {
             return true;
         }
+        */
         let data = self.craft_poc();
         if 0 == data.len() {
             warn!("POC0");
@@ -306,7 +307,7 @@ impl PocData {
         let inserted = self.inserted;
 
         self.inserted = true;
-        if !inserted && self.info.calls_count != self.info.insert_ind {
+        if !inserted {//&& self.info.calls_count != self.info.insert_ind {
             /***************/
             /* INSERT MODE */
             /***************/
@@ -317,7 +318,7 @@ impl PocData {
         }
         self.info.magic = self.magic;
         if self.upload_poc(addr) {
-            //info!("UPLOADED!! -> {:?}", if self.do_gen { "generative" } else { "repro" });
+            info!("UPLOADED [{:?} (/{:?})] # {:?}", self.runtime.len(), self.info.calls_count, if self.do_gen { "generative" } else { "repro" });
             self.shared = true;
             unsafe { REPROED = true } //temporary
         } else {
@@ -326,9 +327,11 @@ impl PocData {
         true
     }
     pub fn skip(&mut self, ind: usize) {
+trace!("SKIPED ONE");
         self.block.push(ind + self.added);
     }
     pub fn add_one(&mut self, new_ind: usize) -> bool {
+trace!("ADDED ONE {new_ind} vs {:?}", self.info.calls_count);
         self.inserted = false;
         self.info.insert_ind = new_ind;
         false
@@ -356,7 +359,7 @@ impl PocData {
         //if self.calls2.len() > 0 { return &self.calls2[ind] }
         let call = self.desc_data(ind).clone();
         while call.offset > self.shmem.data().len() {
-            error!("--> CALL {call:?}")
+            panic!("--> CALL {call:?}");
         }
         &self.shmem.data()[call.offset..][..call.size]
     }

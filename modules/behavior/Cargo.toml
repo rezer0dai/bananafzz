@@ -1,10 +1,10 @@
 [package]
-name = "feedback"
+name = "behavior"
 version = "0.1.0"
 authors = ["re:Zer0dAI <tutti@frutti.com>"]
 
 [lib]
-name = "libfeedback"
+name = "libbehavior"
 path = "src/lib.rs"
 doc = false
 

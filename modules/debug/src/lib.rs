@@ -41,7 +41,8 @@ impl ICallObserver for Debug {
         if 0 == u64::from(call.id()) {
             return Ok(true)
         }
-        println!("[d - sid:{:?}]call : {:?} <{:?}> [fd:{:?} | {:?}]", state.id, call.name(), state.name, state.fd, call.success());
+        //println!("[d - sid:{:?}]call : {:?} <{:?}> [fd:{:?} | {:?}]", state.id, call.name(), state.name, state.fd, call.success());
+        println!("\t[debug] notify - sid:{:?}]call : {:?} <{:?}> [{:?}]", state.id, call.name(), state.name, call.success());
         return Ok(true)
     }
     fn aftermath(&self, state: &StateInfo, call: &mut Call) { 
@@ -51,7 +52,8 @@ impl ICallObserver for Debug {
         if 0 == u64::from(call.id()) {
             return
         }
-        println!("[SUCCESS]call : {:?} <{:?}> [fd:{:?} | {:?}]", call.name(), state.name, state.fd, call.success());
+        //println!("[SUCCESS]call : {:?} <{:?}> [fd:{:?} | {:?}]", call.name(), state.name, state.fd, call.success());
+        println!("\t[debug] aftermath ->[OK] call : {:?} <{:?}> [{:?}]", call.name(), state.name, call.success());
     }
 }
 

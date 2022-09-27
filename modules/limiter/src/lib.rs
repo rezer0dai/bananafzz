@@ -31,7 +31,10 @@ impl ICallObserver for Limiter {
     fn notify(&self, state: &StateInfo, _: &mut Call) -> Result<bool, WantedMask> {
         if 0 != self.cfg.dos_limit 
             && self.n_dos.fetch_add(1, Ordering::Relaxed) > self.cfg.dos_limit 
-        { bananaq::stop(&state.bananaq).unwrap() }
+        { 
+            log::info!("DOS LIMIT");
+            bananaq::stop(&state.bananaq).unwrap() 
+        }
 
         if 0 == self.cfg.failed_limit {
             return Ok(true)
@@ -42,15 +45,20 @@ impl ICallObserver for Limiter {
             return Ok(true)
         }
 
+        log::info!("failed LIMIT");
         bananaq::stop(&state.bananaq).unwrap();
         Ok(false)
     }
     fn aftermath(&self, state: &StateInfo, call: &mut Call) {
+        if call.id().is_default() {
+            return
+        }
         self.n_dos.store(0, Ordering::Relaxed);
         if self.cfg.only_sucks && !call.ok() {
             return
         }
         if self.counter.fetch_add(1, Ordering::Relaxed) > self.cfg.num_of_calls {
+            log::info!("total LIMIT");
             bananaq::stop(&state.bananaq).unwrap()
         }
     }
