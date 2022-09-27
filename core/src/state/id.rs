@@ -27,7 +27,7 @@ impl StateTableId {
     }
     pub fn core_flags(self) -> Self {
         match self {
-            StateTableId::Id(id) => StateTableId::Id(id & !0xFF)
+            StateTableId::Id(id) => StateTableId::Id(id & (!0xFF))
         }
     }
     pub fn de_horn(self) -> Self {

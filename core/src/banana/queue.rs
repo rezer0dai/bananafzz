@@ -152,6 +152,7 @@ impl FuzzyQ {
         *self.active.read().unwrap()
     }
     pub(crate) fn stop(&self) {
+        log::info!("stop with time : {:?}", self.timestamp() - clock_ticks::precise_time_ms());
         *self.active.write().unwrap() = false;
         // ok lets other notify to quit
         //self.wake_up(WantedMask::default(), 0);
@@ -288,42 +289,8 @@ debug!("QUEUE is FULL, denying entry of {:X} -- {}", u64::from(fuzzy_info.id), f
         let uid = thread::current().id();
         let uid = u64::from(uid.as_u64());
 
-        let same_kind = self
-            .states
-            .iter()
-            // filter out unicorns - no need, do_match will do it
-            //.filter(|&(_, ref state)| !state.id.is_unicorn())
-            // count just same kind
-            // state.do_match(fuzzy) will does not count equally ( sub-fd will be pushed )
-            //.filter(|&(_, ref state)| state.id.do_match(&fuzzy_info.id))
-            // fuzzy.do_match(state) will DOES count equally ( sub-fd will NOT be pushed )
-            //.filter(|&(_, ref state)| fuzzy_info.id.do_match(&state.id))
-            .filter(|&(_, ref state)| state.id.core_flags() & fuzzy_info.id.core_flags())
-            .count();
-
-        // forcing at least 1 object of its kind in queue is not necessary what we want, limit config expresivness
-
-        //here we want to FOLD and check siblings count ( ratio-% per object!! )
-        //pay attention that we are interested only in activated ones ?
-        //or maybe double activation, and final activation after intialization ?
-        //
-        //ok seems strict check on all siblings is preferable!!
-
-        // well rust, overflows are handled, kind of overkill geting here overlow checks - implmenting fuzzer not OS
-        if fuzzy_info.id.is_unicorn() { // unicorn
-            if self.cfg.unicorn_kin_limit < self
-                .states
-                .iter()
-                // just unicorns total number!!
-                .filter(|&(_, ref state)| state.id.is_unicorn())
-                //.filter(|&(_, ref state)| (state.id.de_horn().clone() & fuzzy_info.id.de_horn().clone()))
-                .count()
-            { 
-                warn!("UNICORN DENY: {}", fuzzy_info.name);
-                return false }
-        } else if same_kind * self.cfg.ratio > self.cfg.max_queue_size * 1 {
-warn!("QUEUE is overpopulated of same kind, [{}]({uid}) denying entry of {:X}/{:X} [same#{same_kind}", fuzzy_info.name, u64::from(fuzzy_info.id), u64::from(fuzzy_info.id.core_flags()));
-            return false;
+        if !self.allow_pass(&fuzzy_info, uid) {
+            return false
         }
 
         if self.states.contains_key(&uid) {
@@ -332,9 +299,53 @@ warn!("QUEUE is overpopulated of same kind, [{}]({uid}) denying entry of {:X}/{:
                 fuzzy_info.name
             );
         }
-debug!("[{}]::({uid}) allowing entry of {:X}/{:X} [same#{same_kind}", fuzzy_info.name, u64::from(fuzzy_info.id), u64::from(fuzzy_info.id.core_flags()));
 
         self.states.insert(uid, fuzzy_info);
+        true
+    }
+    fn allow_pass(&self, fuzzy_info: &StateInfo, uid: u64) -> bool {
+        if 0 != fuzzy_info.level { // likely allows all racers and hard copies ( dormant ones )
+            return true
+        }
+
+        let total_unicorns = self
+            .states
+            .iter()
+            .filter(|&(_, ref state)| 0 != state.level) // only initialized ones
+            // just unicorns total number!!
+            .filter(|&(_, ref state)| state.id.is_unicorn())
+            //.filter(|&(_, ref state)| (state.id.de_horn().clone() & fuzzy_info.id.de_horn().clone()))
+            .count();
+
+        // well rust, overflows are handled, kind of overkill geting here overlow checks - implmenting fuzzer not OS
+        if fuzzy_info.id.is_unicorn() 
+            && total_unicorns > self.cfg.unicorn_kin_limit 
+        {
+warn!("UNICORN DENY: {}", fuzzy_info.name);
+            return false 
+        }
+
+        let same_kind = self
+            .states
+            .iter()
+            // filter out racers & hardcopies - we are interested only at uniques
+            //.filter(|&(_, ref state)| state.id.is_unicorn())
+            //.filter(|&(_, ref state)| 0 != state.level) // only initialized ones
+            // count just same kind
+            // state.do_match(fuzzy) will does not count equally ( sub-fd will be pushed )
+            //.filter(|&(_, ref state)| state.id.do_match(&fuzzy_info.id))
+            // fuzzy.do_match(state) will DOES count equally ( sub-fd will NOT be pushed )
+            //.filter(|&(_, ref state)| fuzzy_info.id.do_match(&state.id))
+            .filter(|&(_, ref state)| state.id.core_flags() & fuzzy_info.id.core_flags())
+            .count();
+
+        if same_kind * self.cfg.ratio > self.cfg.max_queue_size {
+warn!("QUEUE is overpopulated of same kind, [{}]({uid}) denying entry of {:X}/{:X} [same#{same_kind}", fuzzy_info.name, u64::from(fuzzy_info.id), u64::from(fuzzy_info.id.core_flags()));
+            return false
+        }
+
+debug!("[{}]::({uid}) allowing entry of {:X}/{:X} [same#{same_kind}", fuzzy_info.name, u64::from(fuzzy_info.id), u64::from(fuzzy_info.id.core_flags()));
+
         true
     }
     pub fn pop_safe(&mut self) {

@@ -113,7 +113,7 @@ pub fn do_bananized_crossover(poc_a: &mut [u8], poc_b: &mut [u8], cross_count: u
             poc_o.append(&call, poc_a.desc(i).kin);
         }
     }
-
+println!("CROSOVER"); 
     poc_o.craft_poc()
 }
 

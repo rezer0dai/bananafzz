@@ -88,7 +88,7 @@ impl PocData {
             poc.parse_descs();
             poc
         };
-/*
+
         if poc.do_gen {
             info!(
                 "NEW POC : {:?}",
@@ -100,9 +100,10 @@ impl PocData {
                 info!("? [{i}] Call : {:?}", desc);
                 let head = generic::data_const_unsafe::<PocCallHeader>(&shmem.data()[desc.offset..]);
                 info!("\n\t?> Header : {:?}", head);
+                info!("\n?> FID : {:?}", super::repro::PocCall::new(&poc.load(i)).fid);
             }
         }
-*/
+
         poc
     }
 
@@ -293,6 +294,7 @@ impl PocData {
         let data = self.craft_poc();
         if 0 == data.len() {
             warn!("POC0");
+            std::process::exit(0);
             return false;
         }
         unsafe { POCDROP = true } //temporary

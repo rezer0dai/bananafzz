@@ -168,26 +168,16 @@ impl BananizedFuzzyLoop {
         self.fid_lookup.insert(sid_fid_a, sid_fid_b);
         true
     }
-    fn stop_or_force(&mut self, n_attempts: usize, add_prob: f64) -> bool {
-        if !self.poc.do_gen() && self.cfg.is_strict_repro {
-            return false
-        }
-        if 0 == n_attempts {
-            return false // ctors must go trough!!
-        }
-
-        let max_n_try = self.cfg.max_allowed_wait_count_per_call as f64 * 0.8;
-        let n_try = (n_attempts % self.cfg.max_allowed_wait_count_per_call) as f64;
-        if max_n_try > n_try // seems too in-efficient to do ?
-            && self.n_attempts < self.cfg.max_allowed_wait_count_per_call
+    fn stop_or_force(&mut self, deadend: bool, add_prob: f64) -> bool {
+        if self.n_attempts < self.cfg.max_allowed_wait_count_per_call
             && self.passed < 10
+            && !deadend
         { // if all good, then we just need to try little more
-trace!("atempts are good, try harder => {:?} /{n_attempts}", self.poc_ind);
+trace!("atempts are good, try harder => {:?} /{:?}", self.poc_ind, self.n_attempts);
             return false
         }
 
         let passed = self.passed;
-        let x_attempts = self.n_attempts;
 
         self.passed = 0;
         self.n_attempts = 0;
@@ -199,11 +189,11 @@ trace!("atempts are good, try harder => {:?} /{n_attempts}", self.poc_ind);
             //&& !self.poc.is_last_call(1 + self.poc_ind)//this does not make sense to enable
 //        { return self.poc.add_one(self.poc_ind) }
         { 
-println!("@@@@@@@@@@@@@@@@@@@@@@@@ adding one more to fuzz ({:?} x {:?}) || stats => {:?}", (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed));
+println!("@@@@@@@@@@@@@@@@@@@@@@@@ adding one more to fuzz ({:?} x {:?}) || stats => {:?}", (self.poc_ind, self.poc.added), self.poc.info.calls_count, (self.n_attempts, passed));
             return self.poc.add_one(self.poc_ind) 
         }
         let poc = PocCall::new(&self.poc.load(self.poc_ind));
-warn!("$$$$$$$$$$$$$$$$$$$$$$$$ lets do skip, incomplete, [call : {}]({:?} x {:?}) || stats : [{:?}] add_prob:{:?}", poc.info.cid, (self.poc_ind, self.poc.added), self.poc.info.calls_count, (n_attempts, x_attempts, passed), add_prob);
+warn!("$$$$$$$$$$$$$$$$$$$$$$$$ lets do skip, incomplete, [call : {}]({:?} x {:?}) || stats : [{:?}] add_prob:{:?}", poc.info.cid, (self.poc_ind, self.poc.added), self.poc.info.calls_count, (self.n_attempts, passed), add_prob);
         self.skip()
     }
 
@@ -233,13 +223,13 @@ debug!("pocind");
         // aka environnment of origina POC is changed
 //debug!("#sid (object:{:?}; bananaq.len={:?}) stop or forcese  [{:?}/{:?}] -> <{:?}][{:?}> last_call {:?}", state.uid(), bananaq::len(&state.bananaq).unwrap(), self.poc_ind, self.poc.info.calls_count, u64::from(state.id), poc.info.sid, self.poc.is_last_call(1 + self.poc_ind));
             // but OK if too much of attempts do it, ignore calls attempts
-            return self.stop_or_force(1, 1.0)
+            return self.stop_or_force(false, 1.0)
             //return false
         }
 
-        if !state.fd.is_invalid() // need to here cuz dupped
+        if !state.fd.is_invalid() // need to here cuz dupped, casually happening btw
             && !self.resolve_fid(poc.info.sid, &poc.fid, state.fd.data()) {
-debug!("fid --> {:?}", (poc.fid, state.fd.data())); // seems common tbh
+debug!("!fid --> {:?}", (poc.fid, state.fd.data())); // seems common tbh
             return false
         }
 
@@ -251,12 +241,9 @@ debug!("uid : {:?} x {:?} --> LEVEL : {:?}\n\t FULL UID MAP {:?}", state.uid(), 
         if state.level != poc.info.level {
 
 debug!("[bfl] object:{:X}=={} WRONG #levels {:?} <cid: {:?} ; name = {:?}> stop or force in bananaq#{:X}", poc.info.sid, poc.info.sid, (state.level, poc.info.level), poc.info.cid, state.name, bananaq::qid(&state.bananaq).unwrap());
-            if !self.poc.do_gen() {
-                return self.skip()
-            }
 
             return self.stop_or_force( // seems crossover or insert happened
-                self.cfg.max_allowed_wait_count_per_call - 1,// call_attempts!(call, state, self.n_attempts, poc), 
+                true,
                 if 0 != poc.info.level { 0.5 } else { 0.0 });
         }
 
@@ -275,7 +262,7 @@ debug!("[bfl] object:{:X}=={} WRONG #levels {:?} <cid: {:?} ; name = {:?}> stop 
 
 debug!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).unwrap());
 
-            return self.stop_or_force(call_attempts!(call, state, self.n_attempts, poc), 0.5)//try add something
+            return self.stop_or_force(true, 0.5)//try add something
         }
 
         let data_load_freedom_ratio = if self.poc.do_gen() && rand::thread_rng().gen_bool(
@@ -331,6 +318,9 @@ trace!("[bfl] <{}> approved-call {} / {} :: {:?} [ uid :: {:?}", self.calls_cnt,
     }
     fn verify_ctor(&mut self, state: &StateInfo) -> bool {
         let poc = PocCall::new(&self.poc.load(self.poc_ind));
+
+trace!("APPROVED-CTOR -> {:?} \n\t->of {:?}", state.fd.data(), poc.fid);
+
         if self.resolve_fid(poc.info.sid, &poc.fid, state.fd.data()) {
             return true
         }
@@ -345,8 +335,6 @@ warn!("[BFL] Overlapping fid at runtime: {:?} != {:?}\n\t=> {:?}",
         return false;
     }
     fn notify_ctor_locked_repro(&mut self, state: &StateInfo) -> bool {
-trace!("APPROVED-CTOR -> {:?}", state.fd.data());
-
         if !self.verify_ctor(state) {
             return false
         }
