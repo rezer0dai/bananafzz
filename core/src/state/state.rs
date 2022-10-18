@@ -209,9 +209,15 @@ impl State {
             if oracle != 0 {
                 log::trace!("we got and oracle: {oracle} vs {:?}", self.groups[self.ccache.0][self.ccache.1].id());
             }
-
-            // ok do some proportional way wait
-            thread::sleep(Duration::from_nanos(1 + 100 * (self.call_view().n_attempts() as u64) % self.failing_delay_limit));
+/*
+            if 0 == oracle { // no it is not our turn
+                // ok do some proportional way wait
+                thread::sleep(Duration::from_nanos(1 + self.failing_delay_limit * (1 + (self.call_view().n_attempts() % 10) as u64)));
+            } //else {
+                //thread::sleep(Duration::from_nanos(1 + self.failing_delay_limit * (1 + (self.call_view().n_attempts() % 10) as u64)));
+            //}
+*/
+            //thread::sleep(Duration::from_millis(1 + self.failing_delay_limit * (self.call_view().n_attempts() as u64) % 10));
             /*
             if self.level() > 0 && 1 != self.groups[self.ccache.0].len() {
                 thread::sleep(Duration::from_nanos(1 + 100 * ((self.call_view().n_attempts() - 1) as u64) % self.failing_delay_limit));

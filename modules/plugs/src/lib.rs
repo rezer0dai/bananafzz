@@ -48,7 +48,7 @@ pub struct ConfigCore {
     filter: Option<FilterConfig>,
     raceunlock: Option<RaceUnlockConfig>,
     sleeper: Option<SleeperConfig>,
-    limiter: Option<LimiterConfig>,
+    pub limiter: Option<LimiterConfig>,
     debug: Option<DebugConfig>,
     mediator: Option<()>,
     solback: Option<()>,

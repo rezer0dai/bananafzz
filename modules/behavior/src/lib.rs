@@ -143,7 +143,6 @@ impl Behavior {
         if 0 != self.behavior[self.order][0].cname.len() {
             return // only checkpoints to save
         }
-if true{//self.order >= 13 { 
         unsafe {
             ::log_feedback(
                 self.order,
@@ -151,7 +150,7 @@ if true{//self.order >= 13 {
                 self.cc,
                 self.tictoc.as_ref().unwrap().elapsed().as_millis()
             );
-        }}
+        }
 std::fs::write(format!("ORDER.{:?}.INFO", self.order), format!("{:?}\n\tw/actors {:?}", self.behavior[self.order+1], self.actors));
         self.order += 1;
     }

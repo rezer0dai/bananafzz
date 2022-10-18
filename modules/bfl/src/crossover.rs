@@ -1,5 +1,5 @@
-use rand::prelude::IteratorRandom;
-use rand::thread_rng;
+use std::collections::{BTreeMap, BTreeSet};
+use rand::{thread_rng, Rng, prelude::IteratorRandom, distributions::{Distribution, WeightedIndex}};
 
 use info::{PocCallHeader, PocDataHeader};
 use poc::PocData;
@@ -26,7 +26,8 @@ fn find_target(pid: u64, xids: &Vec<Xid>, call: &PocCallHeader) -> Result<Xid, (
     let mut rng = thread_rng();
     if let Some(xid) = xids
         .iter()
-        .filter(|xid| 0 == xid.pid && xid.sid == call.sid)
+        //.filter(|xid| 0 == xid.pid && xid.sid == call.sid)
+        .filter(|xid| xid.sid == call.sid)
         .choose(&mut rng)
     {
         return Ok(Xid::new(pid, call.uid, call.sid, xid.ind));
@@ -36,8 +37,8 @@ fn find_target(pid: u64, xids: &Vec<Xid>, call: &PocCallHeader) -> Result<Xid, (
     //    return Err(())
 
     // seems it is DUP by default, maybe force to disable this option in bananafzz
-    //Ok(Xid::new(pid, call.uid, call.sid, 1 + xids.len() as u64))
-    Err(())//"No object to related to found!")
+    Ok(Xid::new(pid, call.uid, call.sid, 1 + xids.len() as u64))
+    //Err(())//"No object to related to found!")
 }
 
 fn resolve_xid(pid: u64, xids: &mut Vec<Xid>, call: &PocCallHeader) -> Result<(), ()> {
@@ -75,45 +76,134 @@ fn adjust_sid(pid: u64, xids: &mut Vec<Xid>, call: &[u8]) -> Result<Vec<u8>, ()>
     Ok(call_vec)
 }
 
-pub fn do_bananized_crossover(poc_a: &mut [u8], poc_b: &mut [u8], cross_count: usize) -> Vec<u8> {
+pub fn do_bananized_crossover(poc_a: &[u8], poc_b: &[u8], cross_count: usize) -> Vec<u8> {
     //check loaded spliced memory, if splice is wanted, else return
 
     let magic = generic::data_const_unsafe::<PocDataHeader>(poc_a).magic;
-    let split_at = generic::data_const_unsafe::<PocDataHeader>(poc_a).split_at;
-    assert!(!0 != split_at);
-    generic::data_mut_unsafe::<PocDataHeader>(poc_a).split_at = !0;
+
     let poc_a = unsafe { PocData::new(magic, std::mem::transmute(poc_a.as_ptr())) };
     if poc_a.header().magic != magic {
         panic!("[BFL] splice-A no good magic {:X}", poc_a.header().magic)
     }
 
-    let cross_at = generic::data_const_unsafe::<PocDataHeader>(poc_b).split_at;
-    assert!(!0 != cross_at);
-    generic::data_mut_unsafe::<PocDataHeader>(poc_b).split_at = !0;
     let poc_b = unsafe { PocData::new(magic, std::mem::transmute(poc_b.as_ptr())) };
     if poc_b.header().magic != magic {
         panic!("[BFL] splice-B no good magic {:X}", poc_b.header().magic)
     }
 
-    let mut poc_o = PocData::new(magic, 0);
+    let mut repro_a = BTreeMap::new();
+    let mut repro_b = BTreeMap::new();
+    let mut indices = BTreeMap::new();
+
+    repro_a.insert(true, BTreeMap::new());
+    repro_a.insert(false, BTreeMap::new());
+    repro_b.insert(true, BTreeMap::new());
+    repro_b.insert(false, BTreeMap::new());
+    indices.insert(true, BTreeMap::new());
+    indices.insert(false, BTreeMap::new());
+
+    for i in 0..poc_a.header().calls_count {
+        let call = generic::data_const_unsafe::<PocCallHeader>(&poc_a.call(i));
+
+        let ctor = &(0 == call.level);
+        let key = if !ctor {
+            call.uid
+        } else { call.sid };
+
+        if !repro_a[ctor].contains_key(&key) {
+            repro_a
+                .get_mut(ctor).unwrap()
+                .insert(key, 0);
+        }
+        if !repro_b[ctor].contains_key(&key) {
+            repro_b
+                .get_mut(ctor).unwrap()
+                .insert(key, 0);
+            indices
+                .get_mut(ctor).unwrap()
+                .insert(key, vec![]);
+        }
+        *repro_a
+            .get_mut(&ctor).unwrap()
+            .get_mut(&key).unwrap() += 1;
+    }
+
+    for i in 0..poc_b.header().calls_count {
+        let call = generic::data_const_unsafe::<PocCallHeader>(&poc_b.call(i));
+
+        let ctor = &(0 == call.level);
+        let key = if !ctor {
+            call.uid
+        } else { call.sid };
+
+        if !repro_b[ctor].contains_key(&key) {
+            repro_b
+                .get_mut(ctor).unwrap()
+                .insert(key, 0);
+            indices
+                .get_mut(ctor).unwrap()
+                .insert(key, vec![]);
+        }
+        *repro_b
+            .get_mut(&ctor).unwrap()
+            .get_mut(&key).unwrap() += 1;
+        indices
+            .get_mut(&ctor).unwrap()
+            .get_mut(&key).unwrap()
+            .push(i);
+    }
 
     let mut xids = vec![];
-    for i in 0..split_at {
-        if let Ok(call) = adjust_sid(0, &mut xids, poc_a.call(i)) {
+    let mut seed = rand::thread_rng();
+    let mut skip = BTreeSet::new();
+    let mut poc_o = PocData::new(magic, 0);
+    for i in 0..poc_a.header().calls_count {
+        let call = generic::data_const_unsafe::<PocCallHeader>(&poc_a.call(i));
+
+        let ctor = &(0 == call.level);
+        let key = &(if !ctor {
+            call.uid
+        } else { call.sid });
+
+        *repro_a
+            .get_mut(ctor).unwrap()
+            .get_mut(key).unwrap() -= 1;
+
+        if repro_a[ctor][key] >= repro_b[ctor][key] 
+            && seed.gen_bool(0.5) 
+        {
+            if *ctor {
+                skip.insert(call.uid);
+            } else { continue } // skip this one ( gen B info = null )
+        } // ok keep ( gen A info need prevails )
+
+        if skip.contains(&call.uid) {
+            continue
+        }
+
+        if 0 == repro_b[ctor][key] || seed.gen_bool(0.5) { // gene A
+            let call = adjust_sid(0, &mut xids, poc_a.call(i)).unwrap();
             poc_o.append(&call, poc_a.desc(i).kin);
+        } else { // gene B
+            let skip = if repro_a[ctor][key] + 1 < repro_b[ctor][key] {
+                repro_b[ctor][key] - (repro_a[ctor][key] + 1) - 1
+            } else { 0 };
+
+            let skip = WeightedIndex::new(
+                (1..=1 + skip).rev()
+            ).unwrap().sample(&mut seed);
+
+            *repro_b
+                .get_mut(ctor).unwrap()
+                .get_mut(key).unwrap() -= (skip + 1);
+
+            let ind = indices[ctor][key].len() - 1 - repro_b[ctor][key];
+            let ind = indices[ctor][key][ind];
+
+            let call = adjust_sid(0, &mut xids, poc_b.call(ind)).unwrap();
+            poc_o.append(&call, poc_b.desc(ind).kin);
         }
     }
-    for i in cross_at..(cross_at + cross_count) {
-        if let Ok(call) = adjust_sid(1, &mut xids, poc_b.call(i)) {
-            poc_o.append(&call, poc_b.desc(i).kin);
-        }
-    }
-    for i in split_at..poc_a.header().calls_count {
-        if let Ok(call) = adjust_sid(0, &mut xids, poc_a.call(i)) {
-            poc_o.append(&call, poc_a.desc(i).kin);
-        }
-    }
-println!("CROSOVER"); 
     poc_o.craft_poc()
 }
 

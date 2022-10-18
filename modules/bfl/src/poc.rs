@@ -203,11 +203,11 @@ impl PocData {
             panic!("NOT MADE EQUAL");
         }
         if 0 == self.runtime.len() {
-            error!("not a signle call did goes trough");
+            info!("not a single call did goes trough");
             return vec![];
         }
 
-        println!(
+        debug!(
             "CRAFT POC => {:?} x {:?}",
             self.calls.len(),
             self.runtime.len(),
@@ -294,7 +294,21 @@ impl PocData {
         let data = self.craft_poc();
         if 0 == data.len() {
             warn!("POC0");
-            std::process::exit(0);
+info!(
+    "[bananaq] QUEUE STOP: {:?}",
+    std::backtrace::Backtrace::force_capture()
+        .frames()
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| (3..=4).contains(i))
+        .map(|(_, s)| format!("{:?}", s))
+        .collect::<Vec<String>>() ////            .nth(3)
+                                  //            .enumerate()
+                                  //            .map(|(i, s)| format!("\n [{i}] <{s:?}>"))
+                                  //            .collect::<Vec<String>>()
+                                  //            .join("\n")
+);
+            //std::process::exit(0);
             return false;
         }
         unsafe { POCDROP = true } //temporary
@@ -324,7 +338,7 @@ impl PocData {
             self.shared = true;
             unsafe { REPROED = true } //temporary
         } else {
-            error!("UPLOAD FAILED");
+            info!("UPLOAD FAILED");
         }
         true
     }

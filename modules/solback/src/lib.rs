@@ -18,7 +18,7 @@ use core::state::state::StateInfo;
 extern crate common;
 
 const MAX_CID: usize = 0x1000;
-const MAX_AID: usize = 1 + 3/*atackers*/ + 2/*mints*/;
+const MAX_AID: usize = 8;//1 + 3/*atackers*/ + 2/*mints*/; (X+1).pow(2).count_ones()
 
 struct SolBack {
     wanted: Option<WantedMask>,
@@ -64,11 +64,11 @@ impl SolBack {
         if let Some(&cid) = self.ctormap.get(&state.uid()) {
             self.cc += 1;
         // read aid from the back of the structure, last byte ?
-            self.logic(
+            unsafe { self.logic(
                 state, 
                 state.fd.data().iter().last().unwrap().clone(),
                 cid
-            );
+            ) }
         }
         true
     }
@@ -93,49 +93,53 @@ impl SolBack {
 
         let slot = call.einfo()[0];
         let cid = unsafe { std::mem::transmute::<_, usize>(call.id()) };
-        self.logic(state, slot, cid);
+        unsafe { self.logic(state, slot, cid) }
         true
     }
 
-    fn logic(&mut self, state: &StateInfo, slot: u8, cid: usize) {
+    unsafe fn logic(&mut self, state: &StateInfo, slot: u8, cid: usize) {
         self.hitmap[cid] |= slot;
         let _ = self.hitset.insert(cid);
-/*
-if slot != self.hitmap[cid] {
-    println!(" ATTACKER : {:X} -> |{:?}|", self.hitmap[cid], self.hitmap[cid].count_ones());
-    std::process::exit(0)
-}
-*/
+
+        //assert!(self.hitmap[cid].count_ones() < MAX_AID as u32);
+        
+        let _aid = self.hitmap[cid].count_ones() as usize;
+
+        // heatmap
+        ::log_feedback(
+            cid + _aid * MAX_CID,
+            1,
+            self.cc,
+            self.tictoc.as_ref().unwrap().elapsed().as_millis()
+        );
 
         for &i in &self.hitset { // go over all calls
             if 1 != slot && 1 != self.hitmap[i] && 0 == slot & self.hitmap[i] {
                 continue // this cid is not hit by this attacker yet
             }
 
-            let aid = if 1 == self.hitmap[i] {
-                (self.hitmap[cid].count_ones() - 1) as usize
-            } else {
-                (self.hitmap[i].count_ones() - 1) as usize
-            };
-/*
-if aid > 1 || (aid > 0 && 0 == 1 & self.hitmap[i])
-//if aid > 0 && 1 == 1 & self.hitmap[i]
-{
-    println!(" OK MULTIPLE ATTACKERS HAPPENING");
-    println!(" ATTACKER : {:X} -> |{:?}|", self.hitmap[i], self.hitmap[i].count_ones());
-    std::process::exit(0)
+// wrong .. thus we go for the second option, horizontal marking
+
+            let aid = if 1 != self.hitmap[i] {
+                self.hitmap[i].count_ones() as usize
+            } else { _aid };
+if aid < _aid {
+            // storing edge
+            ::log_feedback(
+                i + aid * MAX_CID + (MAX_CID + cid) * (MAX_AID * MAX_CID),
+                1,
+                self.cc,
+                self.tictoc.as_ref().unwrap().elapsed().as_millis()
+            );
 }
-*/
-            // ok all cid we already hit - by this attacker -, we mark
-            //self.hitmap[cid + aid * MAX_CID + i * (MAX_AID * MAX_CID)] = 1;
-            unsafe {
-                ::log_feedback(
-                    cid + aid * MAX_CID + i * (MAX_AID * MAX_CID),
-                    1,
-                    self.cc,
-                    self.tictoc.as_ref().unwrap().elapsed().as_millis()
-                );
-            }
+            // giving hint
+            ::log_feedback(
+                cid + aid * MAX_CID + i * (MAX_AID * MAX_CID),
+                1,
+                self.cc,
+                self.tictoc.as_ref().unwrap().elapsed().as_millis()
+            );
+
         }
     }
     pub fn dtor(&mut self, _state: &StateInfo) { }

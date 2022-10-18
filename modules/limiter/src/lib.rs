@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct LimiterConfig {
     only_sucks: bool,
-    num_of_calls: u32,
+    pub num_of_calls: u32,
     failed_limit: u32,
     dos_limit: u32,
 }

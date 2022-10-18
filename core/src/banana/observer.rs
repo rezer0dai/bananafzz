@@ -1,7 +1,7 @@
 use exec::call::Call;
 use state::state::StateInfo;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
 pub struct WantedMask {
     pub mid: u64,
     pub uid: u64,

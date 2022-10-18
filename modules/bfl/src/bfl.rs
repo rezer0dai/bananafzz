@@ -189,7 +189,7 @@ trace!("atempts are good, try harder => {:?} /{:?}", self.poc_ind, self.n_attemp
             //&& !self.poc.is_last_call(1 + self.poc_ind)//this does not make sense to enable
 //        { return self.poc.add_one(self.poc_ind) }
         { 
-println!("@@@@@@@@@@@@@@@@@@@@@@@@ adding one more to fuzz ({:?} x {:?}) || stats => {:?}", (self.poc_ind, self.poc.added), self.poc.info.calls_count, (self.n_attempts, passed));
+debug!("@@@@@@@@@@@@@@@@@@@@@@@@ adding one more to fuzz ({:?} x {:?}) || stats => {:?}", (self.poc_ind, self.poc.added), self.poc.info.calls_count, (self.n_attempts, passed));
             return self.poc.add_one(self.poc_ind) 
         }
         let poc = PocCall::new(&self.poc.load(self.poc_ind));
@@ -276,14 +276,14 @@ debug!("#atempts stop or force in bananaq#{:X}", bananaq::qid(&state.bananaq).un
         } else { 1. };
 
         if let Err(msg) = call.load_args(&poc.dmp, &poc.mem, &Self::sid_prefix(poc.info.sid), &self.fid_lookup, data_load_freedom_ratio) {
-error!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name());
+info!("[libbfl] unable to load args #{}#{} :: <{msg}>", state.name, call.name());
             return false
         }
 
 trace!("---> [fid : {:?}] : loading ARG : {}#{} with data|{:?}|", poc.fid, state.name, call.name(), poc.mem.len());
 /*
         if !self.ctor_done { // OK, AFL did good job if ctor
-error!("STOP2 -> failing ctor for : {} ( seems load args problem )", self.ctor_name);
+info!("STOP2 -> failing ctor for : {} ( seems load args problem )", self.ctor_name);
             bananaq::stop(&state.bananaq).unwrap();
             return false // actually this should be an ASSERTQ!
         }
@@ -328,7 +328,7 @@ trace!("APPROVED-CTOR -> {:?} \n\t->of {:?}", state.fd.data(), poc.fid);
 //println!("LOOKUP {:?}", self.fid_lookup);
 //println!("ONCE {:?}", self.fid_once);
 // could happen once ctor StateIds/StateTableId < 0x10
-error!("STOP3 [SID:{:X} vs {:X}] {:?} vs {:?}", u64::from(state.id), poc.info.sid, poc.fid, state.fd.data()); // this should not happen
+info!("STOP3 [SID:{:X} vs {:X}] {:?} vs {:?}", u64::from(state.id), poc.info.sid, poc.fid, state.fd.data()); // this should not happen
         bananaq::stop(&state.bananaq).unwrap();
 warn!("[BFL] Overlapping fid at runtime: {:?} != {:?}\n\t=> {:?}", 
     state.fd.data(), self.fid_lookup, poc.fid);
@@ -352,7 +352,7 @@ trace!("[bfl] approved-ctor {} :: {:?}", state.name, state.uid());
 
     pub fn notify_locked_fuzzy(&mut self, state: &StateInfo, call: &mut Call) -> bool {
         if !self.poc.do_gen() && self.poc.is_last_call(self.poc_ind) {
-error!("STOP4");
+debug!("STOP4");
             bananaq::stop(&state.bananaq).unwrap();
             return false
         }
@@ -473,7 +473,7 @@ trace!("-------- CALL : OK SHAAARE -> {:?}", self.poc_ind);
         }
         if self.poc_ind > self.poc.max_ind() {
 
-error!("STOP5 {:?} / {:?}", (self.poc_ind, self.poc.max_ind()), self.poc.info.calls_count);
+info!("STOP5 {:?} / {:?}", (self.poc_ind, self.poc.max_ind()), self.poc.info.calls_count);
 
             bananaq::stop(&state.bananaq).unwrap();
             return Ok(false)

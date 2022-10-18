@@ -85,18 +85,23 @@ impl FuzzyQ {
         std::thread::yield_now();
 
         let (ref lock, ref cvar) = &*wanted;
+
         //println!("----> wait for up {} vs {}", info.uid, uid);
         let mut info = cvar.wait_timeout_while(
                 lock.lock().or_else(|_| Err(()))?, 
                 // .. maybe even nanos .. ?`
                 std::time::Duration::from_millis(wait_max),
                 |mask| { 
-                    !((0 == mask.uid && 0 != sid & mask.sid) || uid == mask.uid)
+                    !((0 == mask.uid && 0 != sid & mask.sid) || uid == mask.uid ||
+                        WantedMask::default().eq(mask))
                 }
                 ).or_else(|_| {
                     warn!("[queue#wait_for] timeout for uid:{uid}; sid:{sid}"); 
                     Err(())
-        })?.0;
+        })?;//.0;
+
+        //generic::append_file_raw("waits.txt", format!("{:?}", if !info.1.timed_out() { 1 } else { 0 }).as_bytes());
+        let mut info = info.0;
 
         trace!("----> [{}] waked up {} vs {} || sid : {} + cid : {} ", info.mid, info.uid, uid, info.sid, info.cid);
         let cid = if uid == info.uid {
@@ -155,12 +160,12 @@ impl FuzzyQ {
         log::info!("stop with time : {:?}", self.timestamp() - clock_ticks::precise_time_ms());
         *self.active.write().unwrap() = false;
         // ok lets other notify to quit
-        //self.wake_up(WantedMask::default(), 0);
     }
     pub(crate) fn finish(&self) {
         for obs in &self.observers_call {
             obs.stop()
         }
+        self.wake_up(WantedMask::default(), 0);
     }
 
     /// certain calls want to intercorporate foreign state
@@ -190,11 +195,10 @@ impl FuzzyQ {
         if !self.active() {
             return Ok(false)
         }
-        // add some competition to current thread
-        if !self.wake_up(WantedMask::default(), 1).is_ok() {
-            return Ok(false)
-        }
 */
+        // add some competition to current thread
+        //self.wake_up(WantedMask::default(), 1);
+
         self.timestamp.store(clock_ticks::precise_time_ms(), Ordering::SeqCst);
 
         let uid = thread::current().id();
@@ -204,7 +208,7 @@ impl FuzzyQ {
         match self.call_notify_exec(call, uid) {
             Ok(res) => {
                 log::trace!("******* wakeup --> {}", self.states.len());
-                //self.wake_up(WantedMask::default(), 1);
+                self.wake_up(WantedMask::default(), 1);
                 Ok(res)
             }
             Err((n, mask)) => {
@@ -251,7 +255,7 @@ impl FuzzyQ {
             obs.notify_dtor(info);
         }
 debug!("dtor tid:{uid} :: {}", info.name);
-        //self.wake_up(WantedMask::default(), 0);
+        //self.wake_up(WantedMask::default(), 1);
     }
     /// state creation callback
     ///

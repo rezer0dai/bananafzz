@@ -34,7 +34,7 @@ macro_rules! callback_proxy {
                                 } else if 0 != mask.sid && 0 == u64::from(state.id) & mask.sid {
                                     Err(mask.clone())
                                 } else { Ok(true) }
-                            } else { Ok(true) };
+                            } else { panic!("..") };
                             target.wanted = None;
                             out
                         } else { Ok(true) }
@@ -57,7 +57,9 @@ macro_rules! callback_proxy {
                 self.lookup
                     .write()
                     .map_or((), |mut target| {
-                        let _ = target.wanted.insert(mask);
+                        if !mask.eq(&WantedMask::default()) {
+                            target.wanted.insert(mask);
+                        } else { panic!("OK") }
                         target.revert(info, call, mask)
                     })
             }
